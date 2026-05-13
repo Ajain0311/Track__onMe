@@ -1,8 +1,8 @@
 // middleware/auth.js
-// Verifies the Firebase ID token sent in the Authorization header.
-// Attaches the decoded UID to req.user.
+// Verifies the Supabase JWT sent in the Authorization header.
+// Attaches the decoded user (id, email) to req.user.
 
-const { admin } = require('../services/firebase');
+const { supabase } = require('../services/supabase');
 
 const verifyToken = async (req, res, next) => {
   const authHeader = req.headers.authorization;
@@ -11,15 +11,21 @@ const verifyToken = async (req, res, next) => {
     return res.status(401).json({ error: 'Unauthorized: No token provided.' });
   }
 
-  const idToken = authHeader.split('Bearer ')[1];
+  const token = authHeader.split('Bearer ')[1];
 
   try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    req.user = { uid: decodedToken.uid, email: decodedToken.email };
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+
+    if (error || !user) {
+      console.error('[Auth] Token verification failed:', error?.message);
+      return res.status(401).json({ error: 'Unauthorized: Invalid or expired token.' });
+    }
+
+    req.user = { id: user.id, email: user.email };
     next();
-  } catch (error) {
-    console.error('[Auth] Token verification failed:', error.message);
-    return res.status(401).json({ error: 'Unauthorized: Invalid or expired token.' });
+  } catch (err) {
+    console.error('[Auth] Unexpected error:', err.message);
+    return res.status(401).json({ error: 'Unauthorized: Token verification error.' });
   }
 };
 

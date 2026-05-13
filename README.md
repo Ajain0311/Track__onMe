@@ -1,229 +1,109 @@
-# 📱 AttendTrack — Full Stack Attendance App
+# AttendTrack
 
-A complete **React Native (Expo) + Node.js/Express + Firebase** attendance tracking app.
+Full-stack attendance tracking app with face recognition, WiFi validation, and time analytics.
 
----
+## Stack
 
-## 📁 Project Structure
-
-```
-VibeCoder/
-├── backend/                  # Express API
-│   ├── controllers/
-│   │   └── attendanceController.js
-│   ├── middleware/
-│   │   └── auth.js           # Firebase token verification
-│   ├── routes/
-│   │   └── attendance.js
-│   ├── services/
-│   │   ├── firebase.js       # Admin SDK init
-│   │   └── firestoreService.js
-│   ├── .env.example
-│   ├── .gitignore
-│   ├── index.js
-│   └── package.json
-│
-└── frontend/                 # React Native (Expo)
-    ├── components/
-    │   └── AttendanceCard.js
-    ├── screens/
-    │   ├── LoginScreen.js
-    │   ├── DashboardScreen.js
-    │   └── HistoryScreen.js
-    ├── services/
-    │   ├── api.js            # Axios + auth interceptor
-    │   ├── authService.js    # Firebase client auth
-    │   └── firebaseConfig.js # Firebase client config
-    ├── store/
-    │   └── authStore.js      # Zustand global state
-    ├── App.js
-    ├── app.json
-    ├── babel.config.js
-    └── package.json
-```
+| Layer      | Technology                          |
+|------------|-------------------------------------|
+| Frontend   | React Native (Expo ~52)             |
+| Backend    | Node.js + Express                   |
+| Auth + DB  | Supabase (PostgreSQL + Auth)        |
+| State      | Zustand + AsyncStorage              |
+| HTTP       | Axios                               |
 
 ---
 
-## 🚀 Setup Instructions
+## Quick Start
 
-### Step 1 — Firebase Setup
+### 1 · Supabase setup
 
-1. Go to [Firebase Console](https://console.firebase.google.com)
-2. Create a project → enable **Firestore** and **Authentication (Email/Password)**
-3. Create an **Admin service account**:
-   - Project Settings → Service Accounts → Generate new private key
-   - Note: `projectId`, `clientEmail`, `privateKey`
-4. Get your **Web App config**:
-   - Project Settings → General → Add App (Web)
-   - Copy the `firebaseConfig` object
+1. Create a project at [supabase.com](https://supabase.com).
+2. In **SQL Editor**, run `supabase/migrations/001_create_attendance.sql`.
+3. Copy your credentials from **Settings → API**.
 
----
-
-### Step 2 — Backend Setup
+### 2 · Backend
 
 ```bash
 cd backend
-npm install
+copy .env.example .env      # Windows
+# cp .env.example .env      # Mac/Linux
 ```
 
-Create a `.env` file:
-```env
+Edit `backend/.env`:
+```
+SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY
 PORT=5000
-FIREBASE_PROJECT_ID=your-project-id
-FIREBASE_CLIENT_EMAIL=firebase-adminsdk@your-project.iam.gserviceaccount.com
-FIREBASE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nYOUR_KEY\n-----END PRIVATE KEY-----\n"
 ```
 
-Run locally:
 ```bash
-npm start
-# or for hot reload:
-npm run dev
-```
-
----
-
-### Step 3 — Frontend Setup
-
-1. Open `frontend/services/firebaseConfig.js` and paste your Firebase web app config.
-2. Open `frontend/services/api.js` and set `BASE_URL`:
-   - **Local dev:** `http://YOUR_LOCAL_IP:5000/api` (find IP via `ipconfig`)
-   - **After Render deploy:** `https://your-app.onrender.com/api`
-
-```bash
-cd frontend
 npm install
-npx expo start
+npm run dev        # starts on http://localhost:5000
 ```
 
-Scan the QR code with **Expo Go** on your phone.
+### 3 · Frontend
 
-### Run the app in the **browser** (web)
-
-The repo includes web support. Install deps (once), then start web:
-
-```powershell
+```bash
 cd frontend
-npm.cmd install
-npm.cmd run web
+copy .env.example .env      # Windows
+# cp .env.example .env      # Mac/Linux
 ```
 
-Or: `npx.cmd expo start --web`
+Edit `frontend/.env`:
+```
+EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT_REF.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=YOUR_ANON_KEY
+```
 
-When Metro starts, the terminal shows **`Waiting on http://localhost:8081`** (or another port if 8081 is busy, e.g. **8082**). **Open that exact URL in Chrome or Edge** — that is your frontend.
+```bash
+npm install
+npx expo start          # Expo Go / web
+npx expo start --web    # Web only
+```
 
-- **Backend** must still be running separately at **`http://localhost:5000`** (see Step 2). The web app calls **`http://localhost:5000/api`** automatically in development.
-
-If web says missing dependencies, from `frontend/` run:
-
-`npx.cmd expo install react-dom react-native-web @expo/metro-runtime`
-
-### Web sign-in: `POST identitytoolkit … 400 (Bad Request)`
-
-Usually one of these:
-
-1. **API key restrictions** — Open [Google Cloud Credentials for this project](https://console.cloud.google.com/apis/credentials?project=attendance-ba6294), click your **Browser key** (same prefix as `apiKey` in Firebase config). Under **Application restrictions**, choose **None** for local testing, *or* **HTTP referrers** and add `http://localhost:*`, `http://127.0.0.1:*`, and your Expo URL if different.
-
-2. **Use a Web app config** — In [Firebase Console](https://console.firebase.google.com/) → **Project settings** → **Your apps** → add a **Web** app (`</>`). Copy `apiKey` and `appId` (they look like `1:…:web:…`). Create `frontend/.env`:
-
-   ```env
-   EXPO_PUBLIC_FIREBASE_API_KEY=paste_web_apiKey_here
-   EXPO_PUBLIC_FIREBASE_APP_ID=paste_web_appId_here
-   ```
-
-   Restart Expo after saving `.env`.
+**Physical Android device**: add to `frontend/.env`:
+```
+EXPO_PUBLIC_API_URL=http://192.168.x.x:5000
+```
+(Replace with your LAN IP — `ipconfig` on Windows, `ifconfig` on Mac/Linux.)
 
 ---
 
-## ☁️ Deploying Backend to Render
+## API Reference
 
-1. Push `backend/` folder to a GitHub repository
-2. Go to [render.com](https://render.com) → **New Web Service**
-3. Connect your repo and configure:
-   | Setting | Value |
-   |---------|-------|
-   | Environment | Node |
-   | Build Command | `npm install` |
-   | Start Command | `npm start` |
-4. Add Environment Variables (same as `.env` above)
-5. Deploy → copy the `.onrender.com` URL into `frontend/services/api.js`
+All endpoints require `Authorization: Bearer <supabase_access_token>`.
 
----
-
-## 📡 API Reference
-
-All routes require `Authorization: Bearer <firebase_id_token>` header.
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/` | Health check |
-| POST | `/api/checkin` | Check in (creates record) |
-| POST | `/api/checkout` | Check out (closes record) |
-| GET | `/api/attendance/daily` | Per-day totals + sessions (for History) |
-| GET | `/api/attendance` | Get all raw records for user |
-| GET | `/api/status` | Check if user is currently in |
+| Method | Path                    | Description               |
+|--------|-------------------------|---------------------------|
+| GET    | `/`                     | Health check              |
+| POST   | `/api/checkin`          | Start attendance session  |
+| POST   | `/api/checkout`         | End active session        |
+| GET    | `/api/status`           | Current check-in state    |
+| GET    | `/api/attendance`       | All records (raw)         |
+| GET    | `/api/attendance/daily` | Per-day totals + sessions |
 
 ---
 
-## 🔐 Firestore Structure
+## Database Schema
 
-**Collection:** `attendance`
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `userId` | string | Firebase UID |
-| `checkInTime` | string | ISO timestamp |
-| `checkOutTime` | string \| null | ISO timestamp or null |
-| `totalDuration` | number \| null | Duration in minutes |
-| `date` | string | YYYY-MM-DD |
-
-### Firestore composite indexes (CLI)
-
-Deploy from the **repo root** (`VibeCoder/`), not `backend/` or `frontend/`:
-
-1. Log in once: `npx firebase-tools@13 login`
-2. Deploy indexes: `npx firebase-tools@13 deploy --only firestore:indexes`
-
-The file `.firebaserc` sets the default project to `attendance-ba6294`. If you use another Firebase project, either edit `.firebaserc` or pass `--project YOUR_PROJECT_ID`.
-
-**If deploy still fails:** you do not need the CLI. The first time a query needs an index, the **backend error log** or **Firebase Console** shows a link to create that index in one click.
-
-**Common error — “No currently active project”:** fixed by having `.firebaserc` in the repo root (or run `firebase use --add` and pick your project).
+```sql
+attendance
+  id             UUID  PK
+  user_id        UUID  FK → auth.users(id)
+  check_in_time  TIMESTAMPTZ
+  check_out_time TIMESTAMPTZ  (NULL = active)
+  total_duration INTEGER      (minutes)
+  date           DATE
+  created_at     TIMESTAMPTZ
+```
 
 ---
 
-## Windows: `npm` / `npx` fails in PowerShell
+## Windows PowerShell note
 
-If you see **`running scripts is disabled on this system`** / **`PSSecurityException`**, PowerShell is blocking Node’s `npm.ps1` and `npx.ps1`.
-
-**Quickest fix — use the `.cmd` shims** (same as `npm` / `npx`, no settings change):
+If `npx` / `npm` scripts fail with execution-policy errors:
 
 ```powershell
-cd d:\VibeCoder\backend
-npm.cmd install
-npm.cmd run check:firebase
-npm.cmd run seed:user
-npm.cmd run dev
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
-
-```powershell
-cd d:\VibeCoder\frontend
-npm.cmd install
-npx.cmd expo start
-```
-
-From the repo root, Firebase CLI:
-
-```powershell
-cd d:\VibeCoder
-npx.cmd firebase-tools@13 login
-npx.cmd firebase-tools@13 deploy --only firestore:indexes
-```
-
-**Alternative — allow scripts for your user** (one-time, in PowerShell):
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
-```
-
-Then `npm` and `npx` work as usual. **Or** use **Command Prompt (`cmd.exe`)** instead of PowerShell.

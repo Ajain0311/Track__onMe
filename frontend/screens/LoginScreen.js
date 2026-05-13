@@ -24,63 +24,54 @@ const toAuthEmail = (input) => {
   return t.includes('@') ? t : `${t}@example.com`;
 };
 
+function getSupabaseErrorMessage(error) {
+  const msg = error?.message || '';
+  const status = error?.status;
+
+  if (msg.includes('Invalid login credentials') || msg.includes('invalid_credentials')) {
+    return 'Wrong email or password.';
+  }
+  if (msg.includes('Email not confirmed')) {
+    return 'Please confirm your email address before signing in.';
+  }
+  if (msg.includes('User already registered') || msg.includes('already been registered')) {
+    return 'That email is already registered. Try Sign In.';
+  }
+  if (msg.includes('Password should be')) {
+    return 'Password must be at least 6 characters.';
+  }
+  if (msg.includes('Unable to validate email address')) {
+    return 'That email address looks invalid.';
+  }
+  if (msg.includes('signup_disabled') || msg.includes('Signups not allowed')) {
+    return 'Sign-ups are currently disabled. Contact your administrator.';
+  }
+  if (status === 429 || msg.includes('rate limit') || msg.includes('too many requests')) {
+    return 'Too many attempts. Please wait a moment and try again.';
+  }
+  return msg || 'Something went wrong. Please try again.';
+}
+
 const staticStyles = StyleSheet.create({
   fill: { flex: 1 },
   inner: { flexGrow: 1, justifyContent: 'center', padding: 24, paddingVertical: 48 },
-
   header: { alignItems: 'center', marginBottom: 32 },
-  logoRing: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    padding: 3,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
-    elevation: 14,
-  },
-  logoInner: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 41,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  logoRing: { width: 88, height: 88, borderRadius: 44, padding: 3, justifyContent: 'center', alignItems: 'center', marginBottom: 16, elevation: 14 },
+  logoInner: { width: '100%', height: '100%', borderRadius: 41, justifyContent: 'center', alignItems: 'center' },
   logoEmoji: { fontSize: 38 },
   appName: { fontSize: 32, fontWeight: '900', letterSpacing: -0.5 },
   tagline: { fontSize: 14, marginTop: 8, textAlign: 'center' },
-
-  card: {
-    borderRadius: 24,
-    padding: 26,
-    borderWidth: 1,
-    overflow: 'hidden',
-    elevation: 12,
-  },
-  cardGlow: {
-    ...StyleSheet.absoluteFillObject,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 24,
-    pointerEvents: 'none',
-  },
+  card: { borderRadius: 24, padding: 26, borderWidth: 1, overflow: 'hidden', elevation: 12 },
+  cardGlow: { ...StyleSheet.absoluteFillObject, borderWidth: 1, borderColor: 'rgba(255,255,255,0.06)', borderRadius: 24, pointerEvents: 'none' },
   cardTitle: { fontSize: 24, fontWeight: '800', marginBottom: 6 },
   cardSubtitle: { fontSize: 14, marginBottom: 22 },
-
   inputGroup: { marginBottom: 16 },
   label: { fontSize: 12, marginBottom: 8, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.6 },
-  input: {
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 16,
-    fontSize: 16,
-  },
-
+  input: { borderWidth: 1, borderRadius: 14, padding: 16, fontSize: 16 },
   btnOuter: { marginTop: 10, borderRadius: 16, overflow: 'hidden' },
   btnGrad: { paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
   btnDisabled: { opacity: 0.55 },
   btnText: { color: '#fff', fontSize: 17, fontWeight: '800' },
-
   switchBtn: { marginTop: 22, alignItems: 'center' },
   switchText: { fontSize: 14 },
   switchLink: { fontWeight: '800' },
@@ -91,7 +82,6 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
-  
   const { colors: g, gradients: grad } = useThemeStore();
 
   const handleSubmit = async () => {
@@ -108,26 +98,7 @@ export default function LoginScreen() {
         await signUp(authEmail, password);
       }
     } catch (error) {
-      const code = error?.code || '';
-      let msg = error?.message || 'Something went wrong.';
-      if (code === 'auth/invalid-api-key' || code === 'auth/api-key-not-valid') {
-        msg =
-          'Firebase API key is invalid or blocked. Check Google Cloud → Credentials (Browser key) and Firebase Web app config.';
-      } else if (code === 'auth/operation-not-allowed') {
-        msg = 'Email/Password sign-in is disabled in Firebase Console → Authentication → Sign-in method.';
-      } else if (code === 'auth/invalid-email') {
-        msg = 'That email address looks invalid.';
-      } else if (code === 'auth/user-not-found' || code === 'auth/wrong-password' || code === 'auth/invalid-credential') {
-        msg = 'Wrong email or password.';
-      } else if (code === 'auth/email-already-in-use') {
-        msg = 'That email is already registered. Try Sign In.';
-      } else if (code === 'auth/weak-password') {
-        msg = 'Password should be at least 6 characters.';
-      } else if (/INVALID_KEY|API key|identitytoolkit|400/i.test(String(error?.message || ''))) {
-        msg =
-          'Firebase rejected the request (400). Check API key restrictions for localhost and use a Web app config if needed.';
-      }
-      notifyError('Error', msg);
+      notifyError('Error', getSupabaseErrorMessage(error));
     } finally {
       setLoading(false);
     }
@@ -135,10 +106,7 @@ export default function LoginScreen() {
 
   return (
     <LinearGradient colors={grad.screen} style={staticStyles.fill}>
-      <KeyboardAvoidingView
-        style={staticStyles.fill}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardAvoidingView style={staticStyles.fill} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView contentContainerStyle={staticStyles.inner} keyboardShouldPersistTaps="handled">
           <View style={staticStyles.header}>
             <LinearGradient colors={grad.button} style={[staticStyles.logoRing, { shadowColor: g.accent, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.55, shadowRadius: 24 }]}>
@@ -189,17 +157,13 @@ export default function LoginScreen() {
               activeOpacity={0.9}
             >
               <LinearGradient colors={grad.button} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={staticStyles.btnGrad}>
-                {loading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={staticStyles.btnText}>{isLogin ? 'Sign In' : 'Sign Up'}</Text>
-                )}
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={staticStyles.btnText}>{isLogin ? 'Sign In' : 'Sign Up'}</Text>}
               </LinearGradient>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => setIsLogin(!isLogin)} style={staticStyles.switchBtn}>
               <Text style={[staticStyles.switchText, { color: g.textMuted }]}>
-                {isLogin ? "New here? " : 'Have an account? '}
+                {isLogin ? 'New here? ' : 'Have an account? '}
                 <Text style={[staticStyles.switchLink, { color: g.accent }]}>{isLogin ? 'Sign Up' : 'Sign In'}</Text>
               </Text>
             </TouchableOpacity>

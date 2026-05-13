@@ -44,8 +44,8 @@ export default function FaceVerificationScreen({ navigation, route }) {
   // Check if face is registered - must be before any early returns
   useEffect(() => {
     const checkFaceRegistration = async () => {
-      if (user?.uid) {
-        const hasData = await hasFaceData(user.uid);
+      if (user?.id) {
+        const hasData = await hasFaceData(user.id);
         if (!hasData) {
           Alert.alert(
             'Face Not Registered',
@@ -194,7 +194,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
       }
 
       // Verify face against stored data (auto-register if no face data exists)
-      const verificationResult = await verifyFace(user.uid, faceFeatures, 0.75, photo.uri);
+      const verificationResult = await verifyFace(user.id, faceFeatures, 0.75, photo.uri);
       setSimilarity(verificationResult.similarity);
 
       if (!verificationResult.success) {

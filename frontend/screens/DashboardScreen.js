@@ -13,10 +13,9 @@ import useAuthStore from '../store/authStore';
 import useTimeStore from '../store/timeStore';
 import useThemeStore from '../store/themeStore';
 import { verifyBiometric, isBiometricAvailable, getBiometricLabel } from '../services/biometricAuth';
-import { validateWifiConnection, isAllowedWifi, getAllowedWifiName } from '../services/wifiService';
+import { validateWifiConnection, getAllowedWifiName } from '../services/wifiService';
 import { hasFaceData } from '../services/faceRecognitionService';
 
-// Haptic feedback helper (uses Vibration API as fallback)
 const triggerHaptic = (type = 'light') => {
   if (Platform.OS === 'web') return;
   try {
@@ -43,10 +42,7 @@ const formatDuration = (totalSeconds) => {
 const formatDurationCompact = (totalSeconds) => {
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
-  if (h > 0) {
-    return `${h}h ${m}m`;
-  }
-  return `${m}m`;
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 };
 
 const formatTime = (iso) => {
@@ -61,25 +57,20 @@ const getGreeting = () => {
   return 'Evening';
 };
 
-// Static styles that don't depend on theme
 const staticStyles = StyleSheet.create({
   fill: { flex: 1 },
   scroll: { flex: 1 },
   inner: { padding: 24, paddingTop: 56, paddingBottom: 100 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  
   topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 },
   statusRow: { flexDirection: 'row', alignItems: 'center' },
   statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
   statusText: { fontSize: 18, fontWeight: '800' },
   statusSub: { fontSize: 13, marginTop: 10, lineHeight: 20 },
-  
   sessionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   liveIndicator: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
   timerLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
   timerValue: { fontSize: 44, fontWeight: '900', marginTop: 8, fontVariant: ['tabular-nums'] },
   timerSub: { fontSize: 13, marginTop: 8 },
-  
   totalTimeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   totalTimeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   totalTimeBadgeText: { fontSize: 11, fontWeight: '700' },
@@ -89,7 +80,6 @@ const staticStyles = StyleSheet.create({
   timeStatValue: { fontSize: 18, fontWeight: '800', marginBottom: 4 },
   timeStatLabel: { fontSize: 12 },
   timeStatDivider: { width: 1, height: 30 },
-  
   buttonRow: { flexDirection: 'row', gap: 12, marginBottom: 22 },
   btnShell: { flex: 1, borderRadius: 18, overflow: 'hidden', elevation: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } },
   btnOff: { opacity: 0.45 },
@@ -97,11 +87,9 @@ const staticStyles = StyleSheet.create({
   btnGrad: { paddingVertical: 20, alignItems: 'center', justifyContent: 'center' },
   btnEmoji: { fontSize: 18, color: 'rgba(255,255,255,0.9)', marginBottom: 4 },
   btnLabel: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  
   infoTitle: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
   infoDate: { fontSize: 17, fontWeight: '800', marginTop: 6 },
   infoHint: { fontSize: 12, marginTop: 8, lineHeight: 18 },
-  
   errorBannerTitle: { fontSize: 15, fontWeight: '800', marginBottom: 8 },
   errorBannerText: { fontSize: 13, lineHeight: 20 },
   retryBtnText: { fontWeight: '800', fontSize: 14 },
@@ -110,9 +98,9 @@ const staticStyles = StyleSheet.create({
 export default function DashboardScreen({ navigation }) {
   const user = useAuthStore((s) => s.user);
   const { colors: g, gradients: grad, isDark } = useThemeStore();
-  const { 
-    isCheckedIn: storeIsCheckedIn, 
-    currentSessionSeconds, 
+  const {
+    isCheckedIn: storeIsCheckedIn,
+    currentSessionSeconds,
     totalTimeSeconds,
     checkIn: storeCheckIn,
     checkOut: storeCheckOut,
@@ -121,7 +109,7 @@ export default function DashboardScreen({ navigation }) {
     getWeekTotal,
     initialize: initializeTimeStore,
   } = useTimeStore();
-  
+
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -132,30 +120,18 @@ export default function DashboardScreen({ navigation }) {
   const [checkOutPressed, setCheckOutPressed] = useState(false);
   const [wifiStatus, setWifiStatus] = useState({ valid: false, message: 'Checking...' });
   const [biometricStatus, setBiometricStatus] = useState({ available: false, label: 'Biometric' });
-  const [faceRegistered, setFaceRegistered] = useState(false);
   const timerRef = useRef(null);
-  
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
-  // Check WiFi and Biometric status
   const checkRequirements = useCallback(async () => {
-    // Check WiFi
     const wifiValidation = await validateWifiConnection();
     setWifiStatus(wifiValidation);
-    
-    // Check Biometric
+
     const biometricAvailable = await isBiometricAvailable();
     const biometricLabelText = await getBiometricLabel();
     setBiometricStatus({ available: biometricAvailable, label: biometricLabelText });
-    
-    // Check Face Registration
-    if (user?.uid) {
-      const hasFace = await hasFaceData(user.uid);
-      setFaceRegistered(hasFace);
-    }
-  }, [user]);
+  }, []);
 
-  // Check requirements on mount
   useEffect(() => {
     checkRequirements();
   }, [checkRequirements]);
@@ -167,7 +143,7 @@ export default function DashboardScreen({ navigation }) {
       const { isCheckedIn: checkedIn, activeSession: session } = res.data;
       setIsCheckedIn(checkedIn);
       setActiveSession(session);
-      
+
       if (checkedIn && !storeIsCheckedIn) {
         storeCheckIn();
       } else if (!checkedIn && storeIsCheckedIn) {
@@ -182,10 +158,9 @@ export default function DashboardScreen({ navigation }) {
     }
   }, [storeIsCheckedIn, storeCheckIn, storeCheckOut]);
 
-  // Handle refresh - also updates WiFi status
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await checkRequirements(); // Refresh WiFi and Biometric status
+    await checkRequirements();
     await fetchStatus();
   }, [fetchStatus, checkRequirements]);
 
@@ -196,22 +171,11 @@ export default function DashboardScreen({ navigation }) {
 
   useEffect(() => {
     if (isCheckedIn || storeIsCheckedIn) {
-      timerRef.current = setInterval(() => {
-        tick();
-      }, 1000);
-      
+      timerRef.current = setInterval(() => tick(), 1000);
       Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.05,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1,
-            duration: 1000,
-            useNativeDriver: true,
-          }),
+          Animated.timing(pulseAnim, { toValue: 1.05, duration: 1000, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
         ])
       ).start();
     } else {
@@ -225,72 +189,27 @@ export default function DashboardScreen({ navigation }) {
   }, [isCheckedIn, storeIsCheckedIn, tick]);
 
   const handleCheckIn = async () => {
-    // First sync status with server to prevent 400 error
-    setActionLoading(true);
-    try {
-      await fetchStatus();
-    } catch (error) {
-      console.error('[CheckIn] Error syncing status:', error);
-    }
-    
-    // Check if already checked in
     if (isCheckedIn) {
       Alert.alert('Already Checked In', 'You are already checked in.');
-      setActionLoading(false);
       return;
     }
-    
-    // Check WiFi connection
+
     const wifiValidation = await validateWifiConnection();
     setWifiStatus(wifiValidation);
     if (!wifiValidation.valid) {
       Alert.alert('WiFi Required', wifiValidation.message);
-      setActionLoading(false);
       return;
     }
-    
-    // Navigate to Face Verification for Check-in
-    // Face verification will auto-register if no face data exists
-    setActionLoading(false);
-    navigation.navigate('FaceVerification', { mode: 'checkin' });
-    return;
-    const optimisticSession = {
-      id: 'temp-' + Date.now(),
-      checkInTime: new Date().toISOString(),
-      checkOutTime: null,
-    };
-    setIsCheckedIn(true);
-    setActiveSession(optimisticSession);
-    storeCheckIn();
-    triggerHaptic('light');
 
-    try {
-      const res = await checkIn();
-      const { record } = res.data;
-      setActiveSession(record);
-      triggerHaptic('success');
-    } catch (error) {
-      setIsCheckedIn(false);
-      setActiveSession(null);
-      triggerHaptic('error');
-      const msg = getApiErrorMessage(error);
-      if (Platform.OS === 'web') window.alert(`Check In Failed\n\n${msg}`);
-      else Alert.alert('Check In Failed', msg);
-    } finally {
-      setActionLoading(false);
-    }
+    navigation.navigate('FaceVerification', { mode: 'checkin' });
   };
 
-  const handleCheckOut = async () => {
-    // Navigate to Face Verification for Check-out
-    // Face verification will auto-register if no face data exists
+  const handleCheckOut = () => {
     navigation.navigate('FaceVerification', { mode: 'checkout' });
   };
 
   const handleLogout = async () => {
-    const go = async () => {
-      await logOut();
-    };
+    const go = async () => { await logOut(); };
     if (Platform.OS === 'web') {
       if (window.confirm('Sign out?')) await go();
     } else {
@@ -301,7 +220,6 @@ export default function DashboardScreen({ navigation }) {
     }
   };
 
-  // Skeleton loading UI
   if (statusLoading) {
     return (
       <LinearGradient colors={grad.screen} style={staticStyles.fill}>
@@ -313,7 +231,6 @@ export default function DashboardScreen({ navigation }) {
             </View>
             <View style={{ backgroundColor: g.glass, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: g.border }} />
           </View>
-
           <LinearGradient colors={grad.card} style={{ borderRadius: 20, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: g.border }}>
             <View style={staticStyles.statusRow}>
               <View style={[staticStyles.statusDot, { backgroundColor: g.glass }]} />
@@ -321,7 +238,6 @@ export default function DashboardScreen({ navigation }) {
             </View>
             <View style={{ height: 16, width: '80%', backgroundColor: g.glass, borderRadius: 4, marginTop: 10 }} />
           </LinearGradient>
-
           <View style={staticStyles.buttonRow}>
             <View style={[staticStyles.btnShell, { backgroundColor: g.glass }]} />
             <View style={[staticStyles.btnShell, { backgroundColor: g.glass }]} />
@@ -336,15 +252,13 @@ export default function DashboardScreen({ navigation }) {
       <ScrollView
         style={staticStyles.scroll}
         contentContainerStyle={staticStyles.inner}
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={g.accent} />
-        }
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={g.accent} />}
       >
         {statusError ? (
           <View style={{ backgroundColor: g.errorBg, borderRadius: 16, padding: 16, marginBottom: 18, borderWidth: 1, borderColor: g.errorBorder }}>
             <Text style={[staticStyles.errorBannerTitle, { color: '#ffb4c0' }]}>Could not load status</Text>
             <Text style={[staticStyles.errorBannerText, { color: g.textMuted }]}>{statusError}</Text>
-            <TouchableOpacity 
+            <TouchableOpacity
               style={{ marginTop: 12, alignSelf: 'flex-start', backgroundColor: g.accentSoft, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: g.borderGlow }}
               onPress={() => { setStatusLoading(true); fetchStatus(); }}
             >
@@ -358,7 +272,7 @@ export default function DashboardScreen({ navigation }) {
             <Text style={{ color: g.textMuted, fontSize: 13, fontWeight: '600' }}>Good {getGreeting()}</Text>
             <Text style={{ color: g.text, fontSize: 17, fontWeight: '800', marginTop: 4, maxWidth: 220 }} numberOfLines={1}>{user?.email}</Text>
           </View>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={{ backgroundColor: g.glass, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: g.border }}
             onPress={handleLogout}
           >
@@ -366,10 +280,10 @@ export default function DashboardScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* WiFi Status Indicator */}
+        {/* WiFi Status */}
         {!isCheckedIn && (
-          <LinearGradient 
-            colors={wifiStatus.valid ? [g.mintSoft, grad.card[1]] : [g.coralSoft, grad.card[1]]} 
+          <LinearGradient
+            colors={wifiStatus.valid ? [g.mintSoft, grad.card[1]] : [g.coralSoft, grad.card[1]]}
             style={{ borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: wifiStatus.valid ? g.mint : g.coral }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -386,21 +300,17 @@ export default function DashboardScreen({ navigation }) {
           </LinearGradient>
         )}
 
-        {/* Biometric Status Indicator */}
+        {/* Biometric Status */}
         {!isCheckedIn && biometricStatus.available && (
-          <LinearGradient 
-            colors={[g.accentSoft, grad.card[1]]} 
+          <LinearGradient
+            colors={[g.accentSoft, grad.card[1]]}
             style={{ borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: g.accent }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={{ fontSize: 16, marginRight: 8 }}>🔒</Text>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: g.accent, fontSize: 13, fontWeight: '700' }}>
-                  {biometricStatus.label} Required
-                </Text>
-                <Text style={{ color: g.textMuted, fontSize: 12, marginTop: 2 }}>
-                  {biometricStatus.label} verification required to check in
-                </Text>
+                <Text style={{ color: g.accent, fontSize: 13, fontWeight: '700' }}>{biometricStatus.label} Required</Text>
+                <Text style={{ color: g.textMuted, fontSize: 12, marginTop: 2 }}>{biometricStatus.label} verification required to check in</Text>
               </View>
             </View>
           </LinearGradient>
@@ -429,21 +339,28 @@ export default function DashboardScreen({ navigation }) {
           <Text style={[staticStyles.totalTimeValue, { color: g.text }]}>{formatDuration(totalTimeSeconds + currentSessionSeconds)}</Text>
           <View style={[staticStyles.timeStatsRow, { borderTopWidth: 1, borderTopColor: g.border }]}>
             <View style={staticStyles.timeStat}>
-              <Text style={[staticStyles.timeStatValue, { color: g.text }]}>{formatDurationCompact(getTodayTotal() + (isCheckedIn ? currentSessionSeconds : 0))}</Text>
+              <Text style={[staticStyles.timeStatValue, { color: g.text }]}>
+                {formatDurationCompact(getTodayTotal() + (isCheckedIn ? currentSessionSeconds : 0))}
+              </Text>
               <Text style={[staticStyles.timeStatLabel, { color: g.textMuted }]}>Today</Text>
             </View>
             <View style={[staticStyles.timeStatDivider, { backgroundColor: g.border }]} />
             <View style={staticStyles.timeStat}>
-              <Text style={[staticStyles.timeStatValue, { color: g.text }]}>{formatDurationCompact(getWeekTotal() + (isCheckedIn ? currentSessionSeconds : 0))}</Text>
+              <Text style={[staticStyles.timeStatValue, { color: g.text }]}>
+                {formatDurationCompact(getWeekTotal() + (isCheckedIn ? currentSessionSeconds : 0))}
+              </Text>
               <Text style={[staticStyles.timeStatLabel, { color: g.textMuted }]}>This Week</Text>
             </View>
           </View>
         </LinearGradient>
 
-        {/* Current Session Timer */}
+        {/* Session Timer */}
         {isCheckedIn ? (
-          <Animated.View style={[{ transform: [{ scale: pulseAnim }] }]}>
-            <LinearGradient colors={[g.mintSoft, isDark ? 'rgba(20,20,40,0.5)' : 'rgba(248,249,250,0.5)']} style={{ borderRadius: 22, padding: 24, alignItems: 'center', marginBottom: 22, borderWidth: 1, borderColor: 'rgba(62,232,199,0.35)' }}>
+          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+            <LinearGradient
+              colors={[g.mintSoft, isDark ? 'rgba(20,20,40,0.5)' : 'rgba(248,249,250,0.5)']}
+              style={{ borderRadius: 22, padding: 24, alignItems: 'center', marginBottom: 22, borderWidth: 1, borderColor: 'rgba(62,232,199,0.35)' }}
+            >
               <View style={staticStyles.sessionHeader}>
                 <View style={[staticStyles.liveIndicator, { backgroundColor: g.mint }]} />
                 <Text style={[staticStyles.timerLabel, { color: g.mint }]}>Current Session</Text>
@@ -455,7 +372,10 @@ export default function DashboardScreen({ navigation }) {
             </LinearGradient>
           </Animated.View>
         ) : (
-          <LinearGradient colors={grad.card} style={{ borderRadius: 22, padding: 32, alignItems: 'center', marginBottom: 22, borderWidth: 1, borderColor: g.border, borderStyle: 'dashed' }}>
+          <LinearGradient
+            colors={grad.card}
+            style={{ borderRadius: 22, padding: 32, alignItems: 'center', marginBottom: 22, borderWidth: 1, borderColor: g.border, borderStyle: 'dashed' }}
+          >
             <Text style={{ color: g.textMuted, fontSize: 16, fontWeight: '600' }}>No active session</Text>
             <Text style={{ color: g.textDim, fontSize: 13, marginTop: 6 }}>Check in to start tracking time</Text>
           </LinearGradient>
@@ -463,11 +383,7 @@ export default function DashboardScreen({ navigation }) {
 
         <View style={staticStyles.buttonRow}>
           <TouchableOpacity
-            style={[
-              staticStyles.btnShell,
-              (isCheckedIn || actionLoading) && staticStyles.btnOff,
-              checkInPressed && staticStyles.btnPressed,
-            ]}
+            style={[(isCheckedIn || actionLoading) && staticStyles.btnOff, checkInPressed && staticStyles.btnPressed, staticStyles.btnShell]}
             onPressIn={() => setCheckInPressed(true)}
             onPressOut={() => setCheckInPressed(false)}
             onPress={handleCheckIn}
@@ -487,11 +403,7 @@ export default function DashboardScreen({ navigation }) {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[
-              staticStyles.btnShell,
-              (!isCheckedIn || actionLoading) && staticStyles.btnOff,
-              checkOutPressed && staticStyles.btnPressed,
-            ]}
+            style={[(!isCheckedIn || actionLoading) && staticStyles.btnOff, checkOutPressed && staticStyles.btnPressed, staticStyles.btnShell]}
             onPressIn={() => setCheckOutPressed(true)}
             onPressOut={() => setCheckOutPressed(false)}
             onPress={handleCheckOut}

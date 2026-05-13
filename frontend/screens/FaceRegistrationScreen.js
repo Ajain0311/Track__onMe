@@ -41,8 +41,8 @@ export default function FaceRegistrationScreen({ navigation }) {
   // Check if already registered - must be before early returns
   useEffect(() => {
     const checkExistingRegistration = async () => {
-      if (user?.uid) {
-        const hasData = await hasFaceData(user.uid);
+      if (user?.id) {
+        const hasData = await hasFaceData(user.id);
         if (hasData) {
           Alert.alert(
             'Face Already Registered',
@@ -179,7 +179,7 @@ export default function FaceRegistrationScreen({ navigation }) {
       }
 
       // Save face data
-      await saveFaceData(user.uid, faceFeatures, photo.uri);
+      await saveFaceData(user.id, faceFeatures, photo.uri);
 
       Alert.alert(
         'Success!',

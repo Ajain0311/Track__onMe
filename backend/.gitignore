@@ -1,5 +1,4 @@
 node_modules/
-.env
 *.json.key
 serviceAccountKey.json
 google-services.json

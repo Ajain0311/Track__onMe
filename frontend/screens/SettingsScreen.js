@@ -3,95 +3,79 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Switch, Alert, Platform, ActivityIndicator
+  Alert, Platform, ActivityIndicator
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import useThemeStore from '../store/themeStore';
 import useTimeStore from '../store/timeStore';
 import useAuthStore from '../store/authStore';
 import { logOut } from '../services/authService';
 import { hasFaceData, deleteFaceData } from '../services/faceRecognitionService';
 
-// Icons as simple text/emoji for now
 const Icons = {
-  theme: '🎨',
-  moon: '🌙',
-  sun: '☀️',
-  device: '📱',
-  data: '💾',
-  reset: '🗑️',
-  logout: '🚪',
-  version: 'ℹ️',
-  chevron: '›',
-  check: '✓',
+  theme: '🎨', moon: '🌙', sun: '☀️', device: '📱',
+  data: '💾', reset: '🗑️', logout: '🚪', version: 'ℹ️', chevron: '›', check: '✓',
 };
 
 export default function SettingsScreen({ navigation }) {
-  const { colors: g, gradients: grad, themeMode, setThemeMode, isDark } = useThemeStore();
+  const { colors: g, gradients: grad, themeMode, setThemeMode } = useThemeStore();
   const { totalTimeSeconds, sessions, resetAll } = useTimeStore();
   const { user } = useAuthStore();
-  
+
   const [isResetting, setIsResetting] = useState(false);
   const [faceRegistered, setFaceRegistered] = useState(false);
   const [appVersion] = useState('1.0.0');
-  
-  // Check face registration status
+
   useEffect(() => {
     checkFaceStatus();
   }, []);
-  
+
   const checkFaceStatus = async () => {
-    if (user?.uid) {
-      const hasFace = await hasFaceData(user.uid);
+    // Supabase user uses .id (not .uid)
+    if (user?.id) {
+      const hasFace = await hasFaceData(user.id);
       setFaceRegistered(hasFace);
     }
   };
-  
-  const handleRegisterFace = () => {
-    navigation.navigate('FaceRegistration');
-  };
-  
+
+  const handleRegisterFace = () => navigation.navigate('FaceRegistration');
+
   const handleDeleteFace = () => {
     Alert.alert(
       'Delete Face Data?',
       'This will remove your registered face data. You will need to re-register to use face recognition.',
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Delete', 
+        {
+          text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             try {
-              await deleteFaceData(user.uid);
+              await deleteFaceData(user.id);
               setFaceRegistered(false);
               Alert.alert('Success', 'Face data deleted successfully.');
             } catch (error) {
               Alert.alert('Error', 'Failed to delete face data: ' + error.message);
             }
-          }
+          },
         },
       ]
     );
   };
-  
-  const handleThemeChange = async (mode) => {
-    await setThemeMode(mode);
-  };
-  
+
   const handleResetData = () => {
     const confirmReset = async () => {
       setIsResetting(true);
       try {
         await resetAll();
         Alert.alert('Success', 'All time tracking data has been reset.');
-      } catch (error) {
+      } catch {
         Alert.alert('Error', 'Failed to reset data. Please try again.');
       } finally {
         setIsResetting(false);
       }
     };
-    
+
     if (Platform.OS === 'web') {
       if (window.confirm('Reset all data?\n\nThis will clear all your accumulated time and session history. This action cannot be undone.')) {
         confirmReset();
@@ -107,12 +91,9 @@ export default function SettingsScreen({ navigation }) {
       );
     }
   };
-  
+
   const handleLogout = async () => {
-    const go = async () => {
-      await logOut();
-    };
-    
+    const go = async () => { await logOut(); };
     if (Platform.OS === 'web') {
       if (window.confirm('Sign out?')) await go();
     } else {
@@ -122,15 +103,11 @@ export default function SettingsScreen({ navigation }) {
       ]);
     }
   };
-  
+
   const ThemeOption = ({ mode, label, icon, description }) => (
     <TouchableOpacity
-      style={[
-        styles.themeOption,
-        { borderColor: g.border },
-        themeMode === mode && { borderColor: g.accent, backgroundColor: g.accentSoft }
-      ]}
-      onPress={() => handleThemeChange(mode)}
+      style={[styles.themeOption, { borderColor: g.border }, themeMode === mode && { borderColor: g.accent, backgroundColor: g.accentSoft }]}
+      onPress={() => setThemeMode(mode)}
     >
       <View style={styles.themeOptionLeft}>
         <Text style={styles.themeIcon}>{icon}</Text>
@@ -139,18 +116,12 @@ export default function SettingsScreen({ navigation }) {
           <Text style={[styles.themeDescription, { color: g.textDim }]}>{description}</Text>
         </View>
       </View>
-      {themeMode === mode && (
-        <Text style={[styles.checkmark, { color: g.accent }]}>{Icons.check}</Text>
-      )}
+      {themeMode === mode && <Text style={[styles.checkmark, { color: g.accent }]}>{Icons.check}</Text>}
     </TouchableOpacity>
   );
-  
+
   const SettingItem = ({ icon, title, subtitle, onPress, rightElement, danger }) => (
-    <TouchableOpacity
-      style={[styles.settingItem, { borderColor: g.border }]}
-      onPress={onPress}
-      disabled={!onPress}
-    >
+    <TouchableOpacity style={[styles.settingItem, { borderColor: g.border }]} onPress={onPress} disabled={!onPress}>
       <View style={styles.settingLeft}>
         <Text style={styles.settingIcon}>{icon}</Text>
         <View style={styles.settingTextContainer}>
@@ -160,72 +131,47 @@ export default function SettingsScreen({ navigation }) {
       </View>
       <View style={styles.settingRight}>
         {rightElement}
-        {onPress && !rightElement && (
-          <Text style={[styles.chevron, { color: g.textDim }]}>{Icons.chevron}</Text>
-        )}
+        {onPress && !rightElement && <Text style={[styles.chevron, { color: g.textDim }]}>{Icons.chevron}</Text>}
       </View>
     </TouchableOpacity>
   );
-  
+
   return (
     <LinearGradient colors={grad.screen} style={styles.fill}>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.inner}>
-        {/* Header */}
         <View style={styles.header}>
           <Text style={[styles.title, { color: g.text }]}>Settings</Text>
           <Text style={[styles.subtitle, { color: g.textMuted }]}>Customize your experience</Text>
         </View>
-        
-        {/* User Info Card */}
+
         <LinearGradient colors={grad.card} style={[styles.userCard, { borderColor: g.border }]}>
           <View style={styles.userAvatar}>
-            <Text style={styles.userAvatarText}>
-              {user?.email?.charAt(0).toUpperCase() || '?'}
-            </Text>
+            <Text style={styles.userAvatarText}>{user?.email?.charAt(0).toUpperCase() || '?'}</Text>
           </View>
           <View style={styles.userInfo}>
-            <Text style={[styles.userEmail, { color: g.text }]} numberOfLines={1}>
-              {user?.email || 'Guest User'}
-            </Text>
+            <Text style={[styles.userEmail, { color: g.text }]} numberOfLines={1}>{user?.email || 'Guest User'}</Text>
             <Text style={[styles.userStatus, { color: g.mint }]}>● Active</Text>
           </View>
         </LinearGradient>
-        
-        {/* Appearance Section */}
+
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: g.textMuted }]}>APPEARANCE</Text>
           <LinearGradient colors={grad.card} style={[styles.sectionCard, { borderColor: g.border }]}>
-            <ThemeOption
-              mode="light"
-              label="Light"
-              icon={Icons.sun}
-              description="Always use light mode"
-            />
+            <ThemeOption mode="light" label="Light" icon={Icons.sun} description="Always use light mode" />
             <View style={[styles.divider, { backgroundColor: g.border }]} />
-            <ThemeOption
-              mode="dark"
-              label="Dark"
-              icon={Icons.moon}
-              description="Always use dark mode"
-            />
+            <ThemeOption mode="dark" label="Dark" icon={Icons.moon} description="Always use dark mode" />
             <View style={[styles.divider, { backgroundColor: g.border }]} />
-            <ThemeOption
-              mode="system"
-              label="System"
-              icon={Icons.device}
-              description="Follow system settings"
-            />
+            <ThemeOption mode="system" label="System" icon={Icons.device} description="Follow system settings" />
           </LinearGradient>
         </View>
-        
-        {/* Face Recognition Section */}
+
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: g.textMuted }]}>FACE RECOGNITION</Text>
           <LinearGradient colors={grad.card} style={[styles.sectionCard, { borderColor: g.border }]}>
             <SettingItem
               icon="👤"
-              title={faceRegistered ? "Face Registered" : "Register Your Face"}
-              subtitle={faceRegistered ? "Face recognition is active" : "Required for check-in/out"}
+              title={faceRegistered ? 'Face Registered' : 'Register Your Face'}
+              subtitle={faceRegistered ? 'Face recognition is active' : 'Required for check-in/out'}
               onPress={handleRegisterFace}
               rightElement={
                 <View style={[styles.statusBadge, { backgroundColor: faceRegistered ? g.mintSoft : g.coralSoft }]}>
@@ -238,19 +184,12 @@ export default function SettingsScreen({ navigation }) {
             {faceRegistered && (
               <>
                 <View style={[styles.divider, { backgroundColor: g.border }]} />
-                <SettingItem
-                  icon="🗑️"
-                  title="Delete Face Data"
-                  subtitle="Remove registered face data"
-                  onPress={handleDeleteFace}
-                  danger
-                />
+                <SettingItem icon="🗑️" title="Delete Face Data" subtitle="Remove registered face data" onPress={handleDeleteFace} danger />
               </>
             )}
           </LinearGradient>
         </View>
 
-        {/* Data Section */}
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: g.textMuted }]}>DATA & STORAGE</Text>
           <LinearGradient colors={grad.card} style={[styles.sectionCard, { borderColor: g.border }]}>
@@ -270,27 +209,21 @@ export default function SettingsScreen({ navigation }) {
             />
           </LinearGradient>
         </View>
-        
-        {/* About Section */}
+
         <View style={styles.section}>
           <Text style={[styles.sectionTitle, { color: g.textMuted }]}>ABOUT</Text>
           <LinearGradient colors={grad.card} style={[styles.sectionCard, { borderColor: g.border }]}>
-            <SettingItem
-              icon={Icons.version}
-              title="Version"
-              subtitle={appVersion}
-            />
+            <SettingItem icon={Icons.version} title="Version" subtitle={appVersion} />
           </LinearGradient>
         </View>
-        
-        {/* Logout Button */}
+
         <TouchableOpacity
           style={[styles.logoutButton, { backgroundColor: g.coralSoft, borderColor: g.coral }]}
           onPress={handleLogout}
         >
           <Text style={[styles.logoutText, { color: g.coral }]}>{Icons.logout} Sign Out</Text>
         </TouchableOpacity>
-        
+
         <View style={styles.bottomPadding} />
       </ScrollView>
     </LinearGradient>
@@ -301,70 +234,26 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   scroll: { flex: 1 },
   inner: { padding: 24, paddingTop: 56 },
-  
   header: { marginBottom: 24 },
   title: { fontSize: 32, fontWeight: '900' },
   subtitle: { fontSize: 15, marginTop: 4 },
-  
-  userCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 24,
-    borderWidth: 1,
-  },
-  userAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: 'rgba(139,124,255,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 14,
-  },
-  userAvatarText: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#8b7cff',
-  },
+  userCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 18, padding: 16, marginBottom: 24, borderWidth: 1 },
+  userAvatar: { width: 50, height: 50, borderRadius: 25, backgroundColor: 'rgba(139,124,255,0.3)', justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+  userAvatarText: { fontSize: 22, fontWeight: '800', color: '#8b7cff' },
   userInfo: { flex: 1 },
   userEmail: { fontSize: 16, fontWeight: '700' },
   userStatus: { fontSize: 13, marginTop: 2, fontWeight: '600' },
-  
   section: { marginBottom: 20 },
   sectionTitle: { fontSize: 12, fontWeight: '800', marginBottom: 8, marginLeft: 4, letterSpacing: 0.5 },
-  sectionCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  
-  themeOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    margin: 4,
-    borderRadius: 12,
-  },
+  sectionCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  themeOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderWidth: 1, borderColor: 'transparent', margin: 4, borderRadius: 12 },
   themeOptionLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   themeIcon: { fontSize: 20, marginRight: 12 },
   themeTextContainer: { flex: 1 },
   themeLabel: { fontSize: 15, fontWeight: '700' },
   themeDescription: { fontSize: 12, marginTop: 2 },
   checkmark: { fontSize: 16, fontWeight: '700' },
-  
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: 14,
-    borderWidth: 1,
-    borderColor: 'transparent',
-  },
+  settingItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 14, borderWidth: 1, borderColor: 'transparent' },
   settingLeft: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   settingIcon: { fontSize: 18, marginRight: 12, width: 24, textAlign: 'center' },
   settingTextContainer: { flex: 1 },
@@ -373,17 +262,8 @@ const styles = StyleSheet.create({
   settingRight: { flexDirection: 'row', alignItems: 'center' },
   chevron: { fontSize: 20, marginLeft: 4 },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  
   divider: { height: 1, marginHorizontal: 14 },
-  
-  logoutButton: {
-    borderRadius: 14,
-    padding: 16,
-    alignItems: 'center',
-    marginTop: 8,
-    borderWidth: 1,
-  },
+  logoutButton: { borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 8, borderWidth: 1 },
   logoutText: { fontSize: 15, fontWeight: '700' },
-  
   bottomPadding: { height: 40 },
 });

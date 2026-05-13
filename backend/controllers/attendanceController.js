@@ -1,5 +1,5 @@
 // controllers/attendanceController.js
-// Handles business logic for all attendance routes.
+// Business logic for all attendance routes.
 
 const {
   createCheckIn,
@@ -7,7 +7,7 @@ const {
   updateCheckOut,
   getUserAttendance,
   buildDailySummaries,
-} = require('../services/firestoreService');
+} = require('../services/attendanceService');
 
 /**
  * POST /checkin
@@ -15,9 +15,8 @@ const {
  */
 const checkIn = async (req, res, next) => {
   try {
-    const userId = req.user.uid;
+    const userId = req.user.id;
 
-    // Check if user already has an active session
     const activeSession = await getActiveSession(userId);
     if (activeSession) {
       return res.status(400).json({
@@ -28,10 +27,7 @@ const checkIn = async (req, res, next) => {
     const record = await createCheckIn(userId);
     console.log(`[CheckIn] User ${userId} checked in at ${record.checkInTime}`);
 
-    return res.status(201).json({
-      message: 'Checked in successfully.',
-      record,
-    });
+    return res.status(201).json({ message: 'Checked in successfully.', record });
   } catch (error) {
     next(error);
   }
@@ -43,7 +39,7 @@ const checkIn = async (req, res, next) => {
  */
 const checkOut = async (req, res, next) => {
   try {
-    const userId = req.user.uid;
+    const userId = req.user.id;
 
     const activeSession = await getActiveSession(userId);
     if (!activeSession) {
@@ -55,10 +51,7 @@ const checkOut = async (req, res, next) => {
     const record = await updateCheckOut(activeSession.id, activeSession.checkInTime);
     console.log(`[CheckOut] User ${userId} checked out. Duration: ${record.totalDuration} min`);
 
-    return res.status(200).json({
-      message: 'Checked out successfully.',
-      record,
-    });
+    return res.status(200).json({ message: 'Checked out successfully.', record });
   } catch (error) {
     next(error);
   }
@@ -70,7 +63,7 @@ const checkOut = async (req, res, next) => {
  */
 const getAttendanceDaily = async (req, res, next) => {
   try {
-    const userId = req.user.uid;
+    const userId = req.user.id;
     const records = await getUserAttendance(userId);
     const days = buildDailySummaries(records);
     return res.status(200).json({ days });
@@ -85,7 +78,7 @@ const getAttendanceDaily = async (req, res, next) => {
  */
 const getAttendance = async (req, res, next) => {
   try {
-    const userId = req.user.uid;
+    const userId = req.user.id;
     const records = await getUserAttendance(userId);
     return res.status(200).json({ records });
   } catch (error) {
@@ -99,7 +92,7 @@ const getAttendance = async (req, res, next) => {
  */
 const getStatus = async (req, res, next) => {
   try {
-    const userId = req.user.uid;
+    const userId = req.user.id;
     const activeSession = await getActiveSession(userId);
 
     return res.status(200).json({
@@ -111,10 +104,4 @@ const getStatus = async (req, res, next) => {
   }
 };
 
-module.exports = {
-  checkIn,
-  checkOut,
-  getAttendanceDaily,
-  getAttendance,
-  getStatus,
-};
+module.exports = { checkIn, checkOut, getAttendanceDaily, getAttendance, getStatus };
