@@ -13,7 +13,7 @@ function resolveBaseUrl() {
     return trimmed.endsWith('/api') ? trimmed : `${trimmed}/api`;
   }
   if (!__DEV__) {
-    return 'https://your-app.onrender.com/api';
+    return 'https://track-onme.onrender.com/api';
   }
   // Android emulator uses 10.0.2.2 to reach the host machine.
   // Expo Go on a physical Android device needs the host machine's LAN IP;
