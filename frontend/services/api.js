@@ -28,7 +28,7 @@ export const BASE_URL = resolveBaseUrl();
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 10000,
+  timeout: 30000,
 });
 
 // Attach Bearer token before every request
@@ -55,7 +55,7 @@ export function getApiErrorMessage(error) {
     return 'The server rejected your login session. Sign out and sign in again.';
   }
   if (error?.code === 'ECONNABORTED' || msg.toLowerCase().includes('timeout')) {
-    return 'Request timed out. Is the backend running? From the project folder run:\ncd backend && npm run dev\n(must listen on port 5000)';
+    return 'Request timed out. The server may be waking up — please try again in a moment.';
   }
   if (error?.response?.data?.error) return String(error.response.data.error);
   if (msg === 'Network Error' || !error?.response) {

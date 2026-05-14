@@ -1,16 +1,14 @@
-// screens/FaceVerificationScreen.js
-// Screen for face verification during check-in/check-out
-
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator,
-  Dimensions, Platform
+  Dimensions, Platform,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
 import useThemeStore from '../store/themeStore';
 import useAuthStore from '../store/authStore';
 import useTimeStore from '../store/timeStore';
+import Toast from '../components/Toast';
 import {
   processDetectedFace,
   validateFacePosition,
@@ -20,90 +18,77 @@ import {
 } from '../services/faceRecognitionService';
 import { checkIn, checkOut, getApiErrorMessage } from '../services/api';
 
-const { width: screenWidth } = Dimensions.get('window');
-const CAMERA_SIZE = Math.min(screenWidth - 48, 400);
+const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const CAMERA_SIZE = Math.min(screenWidth - 48, screenHeight * 0.42, 380);
 
 export default function FaceVerificationScreen({ navigation, route }) {
-  const { mode } = route.params || { mode: 'checkin' }; // 'checkin' or 'checkout'
+  const { mode } = route.params || { mode: 'checkin' };
   const isWeb = Platform.OS === 'web';
   const { colors: g, gradients: grad } = useThemeStore();
   const { user } = useAuthStore();
   const { checkIn: storeCheckIn, checkOut: storeCheckOut } = useTimeStore();
-  
+
   const [permission, requestPermission] = useCameraPermissions();
   const [isProcessing, setIsProcessing] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
-  const [faceMessage, setFaceMessage] = useState('Position your face in the frame');
+  const [faceMessage, setFaceMessage] = useState(
+    isWeb ? '✓ Ready — click the button below' : 'Position your face in the frame'
+  );
   const [similarity, setSimilarity] = useState(0);
-  const [guidanceType, setGuidanceType] = useState('no_face');
   const [faceBounds, setFaceBounds] = useState(null);
   const [lightingQuality, setLightingQuality] = useState('unknown');
+  const [slowRequest, setSlowRequest] = useState(false);
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
   const cameraRef = useRef(null);
   const currentFaceRef = useRef(null);
   const lastDetectionTimeRef = useRef(Date.now());
+  const slowTimerRef = useRef(null);
 
-  // Check if face is registered - must be before any early returns
+  const showToast = (message, type = 'success') =>
+    setToast({ visible: true, message, type });
+
   useEffect(() => {
-    const checkFaceRegistration = async () => {
-      if (user?.id) {
-        const hasData = await hasFaceData(user.id);
-        if (!hasData) {
-          Alert.alert(
-            'Face Not Registered',
-            'You need to register your face before using face recognition.',
-            [
-              { 
-                text: 'Register Now', 
-                onPress: () => navigation.replace('FaceRegistration') 
-              },
-              { 
-                text: 'Cancel', 
-                style: 'cancel',
-                onPress: () => navigation.goBack()
-              },
-            ]
-          );
-        }
+    if (!user?.id) return;
+    hasFaceData(user.id).then((hasData) => {
+      if (!hasData) {
+        Alert.alert(
+          'Face Not Registered',
+          'Register your face in Settings before checking in.',
+          [
+            { text: 'Register Now', onPress: () => navigation.replace('FaceRegistration') },
+            { text: 'Cancel', style: 'cancel', onPress: () => navigation.goBack() },
+          ]
+        );
       }
-    };
-    checkFaceRegistration();
+    });
   }, [user, navigation]);
 
-  // Check for detection timeout - must be before any early returns
   useEffect(() => {
-    const checkInterval = setInterval(() => {
-      const timeSinceLastDetection = Date.now() - lastDetectionTimeRef.current;
-      if (timeSinceLastDetection > 5000 && !faceDetected && !isProcessing) {
-        setFaceMessage('Camera detection slow. Try adjusting lighting...');
-        setGuidanceType('poor_lighting');
+    if (isWeb || faceDetected || isProcessing) return;
+    const interval = setInterval(() => {
+      if (Date.now() - lastDetectionTimeRef.current > 7000) {
+        setFaceMessage('No face detected — try better lighting or move closer');
       }
-    }, 2000);
-    
-    return () => clearInterval(checkInterval);
+    }, 2500);
+    return () => clearInterval(interval);
   }, [faceDetected, isProcessing]);
 
-  // Handle face detection from camera stream - defined before early returns
   const handleFacesDetected = ({ faces }) => {
     if (isProcessing) return;
-    
     lastDetectionTimeRef.current = Date.now();
 
-    if (faces.length === 0) {
+    if (!faces || faces.length === 0) {
       setFaceDetected(false);
       setFaceMessage('No face detected');
       setSimilarity(0);
-      setGuidanceType('no_face');
       setFaceBounds(null);
       currentFaceRef.current = null;
       setLightingQuality('unknown');
       return;
     }
-
     if (faces.length > 1) {
       setFaceDetected(false);
-      setFaceMessage('Multiple faces detected');
-      setSimilarity(0);
-      setGuidanceType('multiple_faces');
+      setFaceMessage('Multiple faces detected — one person only');
       setFaceBounds(null);
       currentFaceRef.current = null;
       return;
@@ -111,23 +96,15 @@ export default function FaceVerificationScreen({ navigation, route }) {
 
     const face = processDetectedFace(faces[0]);
     currentFaceRef.current = face;
-    
-    // Estimate lighting quality
-    const hasGoodLighting = face.leftEyeOpenProbability !== undefined || 
-                           face.rightEyeOpenProbability !== undefined;
-    setLightingQuality(hasGoodLighting ? 'good' : 'poor');
-    
-    // Update face bounds for visual feedback
-    if (face.bounds) {
-      setFaceBounds(face.bounds);
-    }
-    
-    const validation = validateFacePosition(face);
-    setGuidanceType(validation.guidance);
+    if (face.bounds) setFaceBounds(face.bounds);
 
+    const hasLandmarks = face.leftEyeOpenProbability !== undefined || face.rightEyeOpenProbability !== undefined;
+    setLightingQuality(hasLandmarks ? 'good' : 'poor');
+
+    const validation = validateFacePosition(face);
     if (validation.valid) {
       setFaceDetected(true);
-      setFaceMessage('✓ Face detected. Tap Verify');
+      setFaceMessage('✓ Face detected — tap Verify');
     } else {
       setFaceDetected(false);
       setFaceMessage(validation.message);
@@ -135,121 +112,19 @@ export default function FaceVerificationScreen({ navigation, route }) {
     }
   };
 
-  // Handle camera permission - early returns after all hooks
-  if (!permission) {
-    return (
-      <LinearGradient colors={grad.screen} style={styles.container}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={g.accent} />
-          <Text style={[styles.loadingText, { color: g.textMuted }]}>Loading camera...</Text>
-        </View>
-      </LinearGradient>
-    );
-  }
-
-  if (!permission.granted) {
-    return (
-      <LinearGradient colors={grad.screen} style={styles.container}>
-        <View style={styles.centered}>
-          <Text style={[styles.title, { color: g.text }]}>Camera Permission Required</Text>
-          <Text style={[styles.subtitle, { color: g.textMuted, marginBottom: 24 }]}>
-            We need camera access to verify your face for attendance.
-          </Text>
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: g.accent }]}
-            onPress={requestPermission}
-          >
-            <Text style={styles.buttonText}>Grant Permission</Text>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
-    );
-  }
-
-  // Verify face and proceed with check-in/check-out
-  const verifyAndProceed = async () => {
-    // Web: face detection API not available in browsers — skip verification
-    if (isWeb) {
-      setIsProcessing(true);
-      try {
-        if (mode === 'checkin') {
-          await performCheckIn();
-        } else {
-          await performCheckOut();
-        }
-      } finally {
-        setIsProcessing(false);
-      }
-      return;
-    }
-
-    if (!cameraRef.current || !faceDetected || !currentFaceRef.current) {
-      Alert.alert('Error', 'Please position your face correctly before verifying.');
-      return;
-    }
-
-    setIsProcessing(true);
-
-    try {
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 0.8,
-        base64: true,
-      });
-
-      const face = currentFaceRef.current;
-      const faceFeatures = extractFaceFeatures(face);
-
-      if (!faceFeatures) {
-        Alert.alert('Error', 'Failed to extract face features. Please try again.');
-        setIsProcessing(false);
-        return;
-      }
-
-      const verificationResult = await verifyFace(user.id, faceFeatures, 0.75, photo.uri);
-      setSimilarity(verificationResult.similarity);
-
-      if (!verificationResult.success) {
-        Alert.alert('Verification Failed', verificationResult.message);
-        setIsProcessing(false);
-        return;
-      }
-
-      if (verificationResult.isNewRegistration) {
-        Alert.alert(
-          'Face Registered!',
-          'Your face has been registered. Please tap Check In again to complete your check-in.',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
-        );
-        setIsProcessing(false);
-        return;
-      }
-
-      if (mode === 'checkin') {
-        await performCheckIn();
-      } else {
-        await performCheckOut();
-      }
-    } catch (error) {
-      console.error('[FaceVerification] Error:', error);
-      Alert.alert('Error', 'Failed to verify face: ' + error.message);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
   const performCheckIn = async () => {
     try {
-      const res = await checkIn();
+      await checkIn();
       await storeCheckIn();
-      
-      Alert.alert(
-        'Check-in Successful!',
-        'Your face has been verified and you are now checked in.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
+      clearTimeout(slowTimerRef.current);
+      setSlowRequest(false);
+      showToast('Check-in successful!', 'success');
+      setTimeout(() => navigation.goBack(), 1600);
     } catch (error) {
-      const msg = getApiErrorMessage(error);
-      Alert.alert('Check-in Failed', msg);
+      clearTimeout(slowTimerRef.current);
+      setSlowRequest(false);
+      showToast(getApiErrorMessage(error), 'error');
+      setIsProcessing(false);
     }
   };
 
@@ -257,239 +132,276 @@ export default function FaceVerificationScreen({ navigation, route }) {
     try {
       await checkOut();
       await storeCheckOut();
-      
-      Alert.alert(
-        'Check-out Successful!',
-        'Your face has been verified and you are now checked out.',
-        [{ text: 'OK', onPress: () => navigation.goBack() }]
-      );
+      clearTimeout(slowTimerRef.current);
+      setSlowRequest(false);
+      showToast('Check-out successful!', 'success');
+      setTimeout(() => navigation.goBack(), 1600);
     } catch (error) {
-      const msg = getApiErrorMessage(error);
-      Alert.alert('Check-out Failed', msg);
+      clearTimeout(slowTimerRef.current);
+      setSlowRequest(false);
+      showToast(getApiErrorMessage(error), 'error');
+      setIsProcessing(false);
     }
   };
 
+  const verifyAndProceed = async () => {
+    setIsProcessing(true);
+    setSlowRequest(false);
+    slowTimerRef.current = setTimeout(() => setSlowRequest(true), 6000);
+
+    if (isWeb) {
+      if (mode === 'checkin') await performCheckIn();
+      else await performCheckOut();
+      return;
+    }
+
+    if (!cameraRef.current || !faceDetected || !currentFaceRef.current) {
+      clearTimeout(slowTimerRef.current);
+      showToast('Position your face correctly first', 'error');
+      setIsProcessing(false);
+      return;
+    }
+
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: true });
+      const face = currentFaceRef.current;
+      const faceFeatures = extractFaceFeatures(face);
+
+      if (!faceFeatures) {
+        clearTimeout(slowTimerRef.current);
+        showToast('Could not extract face features. Try again.', 'error');
+        setIsProcessing(false);
+        return;
+      }
+
+      const result = await verifyFace(user.id, faceFeatures, 0.75, photo.uri);
+      setSimilarity(result.similarity);
+
+      if (!result.success) {
+        clearTimeout(slowTimerRef.current);
+        showToast(result.message || 'Face not recognized. Try again.', 'error');
+        setIsProcessing(false);
+        return;
+      }
+
+      if (result.isNewRegistration) {
+        clearTimeout(slowTimerRef.current);
+        showToast('Face registered! Tap again to check in.', 'success');
+        setIsProcessing(false);
+        setTimeout(() => navigation.goBack(), 1800);
+        return;
+      }
+
+      if (mode === 'checkin') await performCheckIn();
+      else await performCheckOut();
+    } catch (error) {
+      clearTimeout(slowTimerRef.current);
+      showToast('Error: ' + error.message, 'error');
+      setIsProcessing(false);
+    }
+  };
+
+  if (!permission) {
+    return (
+      <LinearGradient colors={grad.screen} style={s.container}>
+        <View style={s.centered}>
+          <ActivityIndicator size="large" color={g.accent} />
+          <Text style={[s.hint, { color: g.textMuted, marginTop: 12 }]}>Loading camera...</Text>
+        </View>
+      </LinearGradient>
+    );
+  }
+
+  if (!permission.granted) {
+    return (
+      <LinearGradient colors={grad.screen} style={s.container}>
+        <View style={s.centered}>
+          <Text style={{ fontSize: 48, marginBottom: 16 }}>📷</Text>
+          <Text style={[s.title, { color: g.text, textAlign: 'center' }]}>Camera Access Needed</Text>
+          <Text style={[s.hint, { color: g.textMuted, textAlign: 'center', marginBottom: 28 }]}>
+            Camera permission is required to verify your face.
+          </Text>
+          <TouchableOpacity style={[s.btn, { backgroundColor: g.accent }]} onPress={requestPermission}>
+            <Text style={s.btnText}>Grant Permission</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.cancelBtn, { borderColor: g.border }]} onPress={() => navigation.goBack()}>
+            <Text style={[s.cancelText, { color: g.textMuted }]}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
+    );
+  }
+
+  const btnReady = isWeb || faceDetected;
+
   return (
-    <LinearGradient colors={grad.screen} style={styles.container}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: g.text }]}>
-          {mode === 'checkin' ? 'Face Check-in' : 'Face Check-out'}
-        </Text>
-        <Text style={[styles.subtitle, { color: g.textMuted }]}>
-          Verify your identity to {mode === 'checkin' ? 'check in' : 'check out'}
-        </Text>
-      </View>
+    <LinearGradient colors={grad.screen} style={s.container}>
+      <Toast
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
+        onHide={() => setToast((t) => ({ ...t, visible: false }))}
+      />
 
-      {/* Camera Preview */}
-      <View style={[styles.cameraContainer, { borderColor: faceDetected ? g.mint : g.coral }]}>
-        <CameraView
-          ref={cameraRef}
-          style={styles.camera}
-          facing="front"
-          onFacesDetected={handleFacesDetected}
-          faceDetectorSettings={{
-            mode: 'fast', // Better performance on low-end devices
-            detectLandmarks: true,
-            runClassifications: true,
-            minDetectionInterval: 100, // Faster updates
-            tracking: true,
-          }}
-        >
-          {/* Face Guide Overlay */}
-          <View style={styles.overlay}>
-            {/* Static guide oval */}
-            <View style={[styles.faceGuide, { borderColor: faceDetected ? g.mint : g.coral }]} />
-            
-            {/* Dynamic bounding box around detected face */}
-            {faceBounds && (
-              <View 
-                style={[
-                  styles.boundingBox,
-                  {
-                    left: faceBounds.origin.x,
-                    top: faceBounds.origin.y,
-                    width: faceBounds.size.width,
-                    height: faceBounds.size.height,
-                    borderColor: faceDetected ? g.mint : g.coral,
-                  }
-                ]} 
-              />
+      <View style={s.inner}>
+        <View style={s.header}>
+          <Text style={[s.title, { color: g.text }]}>
+            {mode === 'checkin' ? 'Face Check-in' : 'Face Check-out'}
+          </Text>
+          <Text style={[s.hint, { color: g.textMuted }]}>
+            {isWeb
+              ? 'Camera visible for record — click verify to proceed'
+              : `Verify your face to ${mode === 'checkin' ? 'check in' : 'check out'}`}
+          </Text>
+        </View>
+
+        {/* Camera */}
+        <View style={[s.camWrap, {
+          width: CAMERA_SIZE,
+          height: CAMERA_SIZE,
+          borderColor: btnReady ? g.mint : g.coral,
+        }]}>
+          <CameraView
+            ref={cameraRef}
+            style={StyleSheet.absoluteFill}
+            facing="front"
+            onFacesDetected={isWeb ? undefined : handleFacesDetected}
+            faceDetectorSettings={isWeb ? undefined : {
+              mode: 'fast',
+              detectLandmarks: true,
+              runClassifications: true,
+              minDetectionInterval: 150,
+              tracking: true,
+            }}
+          />
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <View style={[s.corner, s.tl, { borderColor: btnReady ? g.mint : g.coral }]} />
+            <View style={[s.corner, s.tr, { borderColor: btnReady ? g.mint : g.coral }]} />
+            <View style={[s.corner, s.bl, { borderColor: btnReady ? g.mint : g.coral }]} />
+            <View style={[s.corner, s.br, { borderColor: btnReady ? g.mint : g.coral }]} />
+            {!isWeb && (
+              <View style={[s.oval, { borderColor: faceDetected ? g.mint : 'rgba(255,255,255,0.3)' }]} />
             )}
-            
-            {/* Lighting indicator */}
-            <View style={[styles.lightingIndicator, { 
-              backgroundColor: lightingQuality === 'good' ? g.mint : 
-                              lightingQuality === 'poor' ? g.coral : g.textDim
-            }]}>
-              <Text style={styles.lightingText}>
-                {lightingQuality === 'good' ? '● Good lighting' : 
-                 lightingQuality === 'poor' ? '● Poor lighting' : '● Checking...'}
-              </Text>
-            </View>
+            {faceBounds && (
+              <View style={[s.bbox, {
+                left: faceBounds.origin.x,
+                top: faceBounds.origin.y,
+                width: faceBounds.size.width,
+                height: faceBounds.size.height,
+                borderColor: faceDetected ? g.mint : g.coral,
+              }]} />
+            )}
+            {!isWeb && (
+              <View style={[s.lightPill, {
+                backgroundColor: lightingQuality === 'good' ? 'rgba(29,185,138,0.85)' : 'rgba(0,0,0,0.55)',
+              }]}>
+                <Text style={s.lightText}>
+                  {lightingQuality === 'good' ? '☀ Good' : lightingQuality === 'poor' ? '☁ Low light' : '● Checking'}
+                </Text>
+              </View>
+            )}
           </View>
-        </CameraView>
-      </View>
+        </View>
 
-      {/* Status Message */}
-      <View style={[styles.statusContainer, { backgroundColor: (isWeb || faceDetected) ? g.mintSoft : g.coralSoft }]}>
-        <Text style={[styles.statusText, { color: (isWeb || faceDetected) ? g.mint : g.coral }]}>
-          {isWeb ? '✓ Ready — click below to proceed' : faceMessage}
-        </Text>
-        {similarity > 0 && (
-          <Text style={[styles.similarityText, { color: g.textMuted }]}>
-            Match: {Math.round(similarity * 100)}%
-          </Text>
+        {/* Status */}
+        <View style={[s.status, { backgroundColor: btnReady ? g.mintSoft : g.coralSoft }]}>
+          <Text style={[s.statusText, { color: btnReady ? g.mint : g.coral }]}>{faceMessage}</Text>
+          {similarity > 0 && (
+            <Text style={[s.simText, { color: g.textMuted }]}>Match: {Math.round(similarity * 100)}%</Text>
+          )}
+        </View>
+
+        {/* Slow request notice */}
+        {slowRequest && (
+          <View style={[s.slowBanner, { backgroundColor: g.accentSoft, borderColor: g.accent }]}>
+            <ActivityIndicator size="small" color={g.accent} style={{ marginRight: 8 }} />
+            <Text style={[s.slowText, { color: g.accent }]}>
+              Server waking up... may take up to 30s on first request
+            </Text>
+          </View>
         )}
+
+        {/* Verify button */}
+        <TouchableOpacity
+          style={[s.btn, {
+            backgroundColor: btnReady
+              ? (mode === 'checkin' ? g.mint : g.coral)
+              : g.textDim,
+            opacity: btnReady ? 1 : 0.5,
+            marginTop: 4,
+          }]}
+          onPress={verifyAndProceed}
+          disabled={!btnReady || isProcessing}
+        >
+          {isProcessing
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={s.btnText}>
+                {mode === 'checkin' ? '▶  Verify & Check In' : '■  Verify & Check Out'}
+              </Text>}
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[s.cancelBtn, { borderColor: g.border }]}
+          onPress={() => navigation.goBack()}
+          disabled={isProcessing}
+        >
+          <Text style={[s.cancelText, { color: g.textMuted }]}>Cancel</Text>
+        </TouchableOpacity>
       </View>
-
-      {/* Verify Button */}
-      <TouchableOpacity
-        style={[
-          styles.verifyButton,
-          { backgroundColor: (isWeb || faceDetected) ? (mode === 'checkin' ? g.mint : g.coral) : g.textDim },
-          (!isWeb && !faceDetected) && styles.verifyButtonDisabled,
-        ]}
-        onPress={verifyAndProceed}
-        disabled={(!isWeb && !faceDetected) || isProcessing}
-      >
-        {isProcessing ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.verifyButtonText}>
-            {mode === 'checkin' ? 'Verify & Check In' : 'Verify & Check Out'}
-          </Text>
-        )}
-      </TouchableOpacity>
-
-      {/* Cancel Button */}
-      <TouchableOpacity
-        style={[styles.cancelButton, { borderColor: g.border }]}
-        onPress={() => navigation.goBack()}
-        disabled={isProcessing}
-      >
-        <Text style={[styles.cancelButtonText, { color: g.textMuted }]}>Cancel</Text>
-      </TouchableOpacity>
     </LinearGradient>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 24,
-    paddingTop: 56,
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  header: {
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '900',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 14,
-  },
-  loadingText: {
-    marginTop: 16,
-    fontSize: 14,
-  },
-  cameraContainer: {
-    width: CAMERA_SIZE,
-    height: CAMERA_SIZE,
+const CORNER = 22;
+const CW = 3;
+
+const s = StyleSheet.create({
+  container: { flex: 1 },
+  inner: { flex: 1, padding: 24, paddingTop: 52 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  header: { marginBottom: 20 },
+  title: { fontSize: 26, fontWeight: '900', marginBottom: 6 },
+  hint: { fontSize: 13, lineHeight: 20 },
+  camWrap: {
     alignSelf: 'center',
     borderRadius: 20,
-    borderWidth: 3,
+    borderWidth: 2,
     overflow: 'hidden',
-    marginBottom: 20,
+    marginBottom: 16,
   },
-  camera: {
-    flex: 1,
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  faceGuide: {
-    width: 200,
-    height: 250,
-    borderRadius: 100,
+  oval: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: '10%',
+    width: '55%',
+    height: '75%',
+    borderRadius: 200,
     borderWidth: 2,
     borderStyle: 'dashed',
-    backgroundColor: 'transparent',
   },
-  boundingBox: {
-    position: 'absolute',
-    borderWidth: 3,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  lightingIndicator: {
-    position: 'absolute',
-    top: 20,
-    right: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  lightingText: {
-    color: '#fff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  statusContainer: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 20,
+  bbox: { position: 'absolute', borderWidth: 2, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)' },
+  corner: { position: 'absolute', width: CORNER, height: CORNER },
+  tl: { top: 14, left: 14, borderTopWidth: CW, borderLeftWidth: CW, borderTopLeftRadius: 6 },
+  tr: { top: 14, right: 14, borderTopWidth: CW, borderRightWidth: CW, borderTopRightRadius: 6 },
+  bl: { bottom: 14, left: 14, borderBottomWidth: CW, borderLeftWidth: CW, borderBottomLeftRadius: 6 },
+  br: { bottom: 14, right: 14, borderBottomWidth: CW, borderRightWidth: CW, borderBottomRightRadius: 6 },
+  lightPill: { position: 'absolute', top: 12, right: 12, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
+  lightText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  status: { borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, marginBottom: 12, alignItems: 'center' },
+  statusText: { fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  simText: { fontSize: 12, marginTop: 4 },
+  slowBanner: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  statusText: {
-    fontSize: 14,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  similarityText: {
-    fontSize: 12,
-    marginTop: 4,
-  },
-  verifyButton: {
-    borderRadius: 16,
-    paddingVertical: 18,
-    alignItems: 'center',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
     marginBottom: 12,
-  },
-  verifyButtonDisabled: {
-    opacity: 0.5,
-  },
-  verifyButtonText: {
-    color: '#fff',
-    fontSize: 17,
-    fontWeight: '800',
-  },
-  cancelButton: {
-    borderRadius: 16,
-    paddingVertical: 16,
-    alignItems: 'center',
     borderWidth: 1,
   },
-  cancelButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  button: {
-    borderRadius: 16,
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '800',
-  },
+  slowText: { fontSize: 12, fontWeight: '600', flex: 1 },
+  btn: { borderRadius: 16, paddingVertical: 17, alignItems: 'center', marginBottom: 10 },
+  btnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
+  cancelBtn: { borderRadius: 16, paddingVertical: 14, alignItems: 'center', borderWidth: 1 },
+  cancelText: { fontSize: 14, fontWeight: '600' },
 });
