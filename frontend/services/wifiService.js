@@ -4,16 +4,27 @@ import { Platform } from 'react-native';
 const ALLOWED_WIFI_NAME = 'realme';
 
 const testInternetConnectivity = async () => {
+  // On native: expo-network's isInternetReachable is more reliable than a HEAD fetch
+  if (Platform.OS !== 'web') {
+    try {
+      const state = await Network.getNetworkStateAsync();
+      if (state.isInternetReachable === true) return true;
+      if (state.isInternetReachable === false) return false;
+      // null / unknown — fall through to fetch test below
+    } catch {}
+  }
+  // Web (and native fallback): no-cors GET — any opaque response means reachable, throw means not
   try {
     const controller = new AbortController();
     const id = setTimeout(() => controller.abort(), 5000);
-    const res = await fetch('https://clients3.google.com/generate_204', {
-      method: 'HEAD',
+    await fetch('https://clients3.google.com/generate_204', {
+      method: 'GET',
+      mode: 'no-cors',
       cache: 'no-store',
       signal: controller.signal,
     });
     clearTimeout(id);
-    return res.status === 204 || res.ok;
+    return true;
   } catch {
     return false;
   }

@@ -192,22 +192,7 @@ export default function DashboardScreen({ navigation }) {
   const handleCheckIn = async () => {
     if (effectiveIsCheckedIn) return;
     triggerHaptic('light');
-    const wifiValidation = await validateWifiConnection();
-    let locationData = null;
-    if (wifiValidation.valid) {
-      setConnectStatus({ valid: true, message: wifiValidation.message, type: 'wifi' });
-    } else {
-      const locResult = await validateAttendanceLocation();
-      if (locResult.valid) {
-        locationData = locResult.location;
-        setConnectStatus({ valid: true, message: locResult.message, type: 'location' });
-      } else {
-        setConnectStatus({ valid: false, message: wifiValidation.message, type: 'none' });
-        Alert.alert('Cannot Check In', `Connect to "${getAllowedWifiName()}" WiFi or enable GPS.\n\n${wifiValidation.message}`);
-        return;
-      }
-    }
-    navigation.navigate('FaceVerification', { mode: 'checkin', location: locationData });
+    navigation.navigate('LocationPicker', { mode: 'checkin' });
   };
 
   const handleCheckOut = () => {

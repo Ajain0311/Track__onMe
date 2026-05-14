@@ -15,6 +15,8 @@ const mapRow = (row) => ({
   longitude: row.longitude ?? null,
   accuracy: row.accuracy ?? null,
   checkInMethod: row.check_in_method ?? 'wifi',
+  locationId: row.location_id ?? null,
+  locationName: row.location_name ?? null,
   createdAt: row.created_at,
 });
 
@@ -36,7 +38,9 @@ const createCheckIn = async (userId, location = null) => {
       latitude: location?.latitude ?? null,
       longitude: location?.longitude ?? null,
       accuracy: location?.accuracy ?? null,
-      check_in_method: location ? 'location' : 'wifi',
+      check_in_method: location?.locationId ? 'location' : location ? 'gps' : 'wifi',
+      location_id: location?.locationId ?? null,
+      location_name: location?.locationName ?? null,
     })
     .select()
     .single();

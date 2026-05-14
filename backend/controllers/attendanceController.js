@@ -16,7 +16,7 @@ const {
 const checkIn = async (req, res, next) => {
   try {
     const userId = req.user.id;
-    const { latitude, longitude, accuracy } = req.body || {};
+    const { latitude, longitude, accuracy, locationId, locationName } = req.body || {};
 
     const activeSession = await getActiveSession(userId);
     if (activeSession) {
@@ -27,8 +27,14 @@ const checkIn = async (req, res, next) => {
 
     const location =
       latitude != null && longitude != null
-        ? { latitude: parseFloat(latitude), longitude: parseFloat(longitude), accuracy: accuracy ? parseFloat(accuracy) : null }
-        : null;
+        ? {
+            latitude: parseFloat(latitude),
+            longitude: parseFloat(longitude),
+            accuracy: accuracy ? parseFloat(accuracy) : null,
+            locationId: locationId || null,
+            locationName: locationName || null,
+          }
+        : (locationId ? { locationId, locationName: locationName || null } : null);
 
     const record = await createCheckIn(userId, location);
     console.log(`[CheckIn] User ${userId} via ${record.checkInMethod} at ${record.checkInTime}`);

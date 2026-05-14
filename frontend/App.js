@@ -12,6 +12,7 @@ import useAuthStore from './store/authStore';
 import useThemeStore from './store/themeStore';
 import { useTimeStore } from './store/timeStore';
 import { startWifiMonitoring, stopWifiMonitoring } from './services/wifiMonitor';
+import { getMe } from './services/api';
 
 import LoginScreen from './screens/LoginScreen';
 import DashboardScreen from './screens/DashboardScreen';
@@ -20,6 +21,12 @@ import AnalyticsScreen from './screens/AnalyticsScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import FaceRegistrationScreen from './screens/FaceRegistrationScreen';
 import FaceVerificationScreen from './screens/FaceVerificationScreen';
+import LocationPickerScreen from './screens/LocationPickerScreen';
+import AdminDashboardScreen from './screens/admin/AdminDashboardScreen';
+import AdminUsersScreen from './screens/admin/AdminUsersScreen';
+import AdminUserDetailScreen from './screens/admin/AdminUserDetailScreen';
+import AdminLocationsScreen from './screens/admin/AdminLocationsScreen';
+import AdminLocationFormScreen from './screens/admin/AdminLocationFormScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -35,6 +42,7 @@ function TabIcon({ emoji, focused }) {
 
 function MainTabs() {
   const { colors: g, isDark } = useThemeStore();
+  const isAdmin = useAuthStore((s) => s.isAdmin);
 
   return (
     <Tab.Navigator
@@ -73,6 +81,13 @@ function MainTabs() {
         component={SettingsScreen}
         options={{ tabBarLabel: 'Settings', tabBarIcon: ({ focused }) => <TabIcon emoji="⚙️" focused={focused} /> }}
       />
+      {isAdmin && (
+        <Tab.Screen
+          name="Admin"
+          component={AdminDashboardScreen}
+          options={{ tabBarLabel: 'Admin', tabBarIcon: ({ focused }) => <TabIcon emoji="⚡" focused={focused} /> }}
+        />
+      )}
     </Tab.Navigator>
   );
 }
@@ -102,7 +117,7 @@ function SplashScreen() {
 }
 
 export default function App() {
-  const { user, loading: authLoading, setUser, setLoading: setAuthLoading } = useAuthStore();
+  const { user, loading: authLoading, setUser, setLoading: setAuthLoading, setIsAdmin } = useAuthStore();
   const { initialize: initializeTheme, colors: g } = useThemeStore();
 
   useEffect(() => {
@@ -124,9 +139,18 @@ export default function App() {
     });
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
+      if (!session?.user) setIsAdmin(false);
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  // Fetch role whenever user changes
+  useEffect(() => {
+    if (!user) return;
+    getMe().then((res) => {
+      setIsAdmin(res.data?.role === 'admin');
+    }).catch(() => setIsAdmin(false));
+  }, [user?.id]);
 
   useEffect(() => {
     if (user) {
@@ -156,6 +180,11 @@ export default function App() {
               <Stack.Screen name="Main" component={MainTabs} />
               <Stack.Screen name="FaceRegistration" component={FaceRegistrationScreen} options={{ animation: 'slide_from_bottom' }} />
               <Stack.Screen name="FaceVerification" component={FaceVerificationScreen} options={{ animation: 'slide_from_bottom' }} />
+              <Stack.Screen name="LocationPicker" component={LocationPickerScreen} options={{ animation: 'slide_from_bottom' }} />
+              <Stack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="AdminUserDetail" component={AdminUserDetailScreen} options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="AdminLocations" component={AdminLocationsScreen} options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="AdminLocationForm" component={AdminLocationFormScreen} options={{ animation: 'slide_from_right' }} />
             </>
           ) : (
             <Stack.Screen name="Login" component={LoginScreen} />

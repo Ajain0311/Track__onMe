@@ -1,13 +1,13 @@
-// index.js
-// Entry point for the AttendTrack backend server.
+// index.js — AttendTrack API entry point
 
 require('dotenv').config();
 
 const express = require('express');
 const cors = require('cors');
 const attendanceRoutes = require('./routes/attendance');
+const adminRoutes = require('./routes/admin');
+const locationRoutes = require('./routes/locations');
 
-// Initialize Supabase client on startup so errors surface immediately
 require('./services/supabase');
 
 const app = express();
@@ -30,9 +30,11 @@ app.use((req, _res, next) => {
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
-app.get('/', (_req, res) => res.status(200).json({ status: 'ok', message: 'AttendTrack API running' }));
+app.get('/', (_req, res) => res.status(200).json({ status: 'ok', message: 'AttendTrack API' }));
 
-app.use('/api', attendanceRoutes);
+app.use('/api', attendanceRoutes);          // /api/checkin, /api/status, /api/me …
+app.use('/api/locations', locationRoutes);  // /api/locations (active list for users)
+app.use('/api/admin', adminRoutes);         // /api/admin/* (admin-only)
 
 // ─── Global Error Handler ────────────────────────────────────────────────────
 
@@ -41,8 +43,8 @@ app.use((err, _req, res, _next) => {
   res.status(err.status || 500).json({ error: err.message || 'Internal Server Error' });
 });
 
-// ─── Start Server ─────────────────────────────────────────────────────────────
+// ─── Start ────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => {
-  console.log(`[Server] AttendTrack API listening on port ${PORT}`);
+  console.log(`[Server] AttendTrack API on port ${PORT}`);
 });
