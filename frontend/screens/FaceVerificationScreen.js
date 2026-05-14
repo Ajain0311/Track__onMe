@@ -4,7 +4,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator,
-  Dimensions
+  Dimensions, Platform
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,6 +25,7 @@ const CAMERA_SIZE = Math.min(screenWidth - 48, 400);
 
 export default function FaceVerificationScreen({ navigation, route }) {
   const { mode } = route.params || { mode: 'checkin' }; // 'checkin' or 'checkout'
+  const isWeb = Platform.OS === 'web';
   const { colors: g, gradients: grad } = useThemeStore();
   const { user } = useAuthStore();
   const { checkIn: storeCheckIn, checkOut: storeCheckOut } = useTimeStore();
@@ -167,6 +168,21 @@ export default function FaceVerificationScreen({ navigation, route }) {
 
   // Verify face and proceed with check-in/check-out
   const verifyAndProceed = async () => {
+    // Web: face detection API not available in browsers — skip verification
+    if (isWeb) {
+      setIsProcessing(true);
+      try {
+        if (mode === 'checkin') {
+          await performCheckIn();
+        } else {
+          await performCheckOut();
+        }
+      } finally {
+        setIsProcessing(false);
+      }
+      return;
+    }
+
     if (!cameraRef.current || !faceDetected || !currentFaceRef.current) {
       Alert.alert('Error', 'Please position your face correctly before verifying.');
       return;
@@ -175,16 +191,12 @@ export default function FaceVerificationScreen({ navigation, route }) {
     setIsProcessing(true);
 
     try {
-      // Take picture
       const photo = await cameraRef.current.takePictureAsync({
         quality: 0.8,
         base64: true,
       });
 
-      // Use the face data from live detection
       const face = currentFaceRef.current;
-
-      // Extract features
       const faceFeatures = extractFaceFeatures(face);
 
       if (!faceFeatures) {
@@ -193,7 +205,6 @@ export default function FaceVerificationScreen({ navigation, route }) {
         return;
       }
 
-      // Verify face against stored data (auto-register if no face data exists)
       const verificationResult = await verifyFace(user.id, faceFeatures, 0.75, photo.uri);
       setSimilarity(verificationResult.similarity);
 
@@ -203,7 +214,6 @@ export default function FaceVerificationScreen({ navigation, route }) {
         return;
       }
 
-      // If this was a new registration, show success and return
       if (verificationResult.isNewRegistration) {
         Alert.alert(
           'Face Registered!',
@@ -214,7 +224,6 @@ export default function FaceVerificationScreen({ navigation, route }) {
         return;
       }
 
-      // Face verified - proceed with check-in or check-out
       if (mode === 'checkin') {
         await performCheckIn();
       } else {
@@ -322,9 +331,9 @@ export default function FaceVerificationScreen({ navigation, route }) {
       </View>
 
       {/* Status Message */}
-      <View style={[styles.statusContainer, { backgroundColor: faceDetected ? g.mintSoft : g.coralSoft }]}>
-        <Text style={[styles.statusText, { color: faceDetected ? g.mint : g.coral }]}>
-          {faceMessage}
+      <View style={[styles.statusContainer, { backgroundColor: (isWeb || faceDetected) ? g.mintSoft : g.coralSoft }]}>
+        <Text style={[styles.statusText, { color: (isWeb || faceDetected) ? g.mint : g.coral }]}>
+          {isWeb ? '✓ Ready — click below to proceed' : faceMessage}
         </Text>
         {similarity > 0 && (
           <Text style={[styles.similarityText, { color: g.textMuted }]}>
@@ -337,11 +346,11 @@ export default function FaceVerificationScreen({ navigation, route }) {
       <TouchableOpacity
         style={[
           styles.verifyButton,
-          { backgroundColor: faceDetected ? (mode === 'checkin' ? g.mint : g.coral) : g.textDim },
-          !faceDetected && styles.verifyButtonDisabled,
+          { backgroundColor: (isWeb || faceDetected) ? (mode === 'checkin' ? g.mint : g.coral) : g.textDim },
+          (!isWeb && !faceDetected) && styles.verifyButtonDisabled,
         ]}
         onPress={verifyAndProceed}
-        disabled={!faceDetected || isProcessing}
+        disabled={(!isWeb && !faceDetected) || isProcessing}
       >
         {isProcessing ? (
           <ActivityIndicator color="#fff" />
