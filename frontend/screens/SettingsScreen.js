@@ -1,6 +1,7 @@
 // screens/SettingsScreen.js — Settings with dark mode and app preferences
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Alert, Platform, ActivityIndicator
@@ -26,9 +27,11 @@ export default function SettingsScreen({ navigation }) {
   const [faceRegistered, setFaceRegistered] = useState(false);
   const [appVersion] = useState('1.0.0');
 
-  useEffect(() => {
-    checkFaceStatus();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      checkFaceStatus();
+    }, [user?.id])
+  );
 
   const checkFaceStatus = async () => {
     // Supabase user uses .id (not .uid)

@@ -6,14 +6,16 @@ import {
   ActivityIndicator, Alert, ScrollView, RefreshControl, Platform,
   Vibration, Animated,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { checkIn, checkOut, getStatus, getApiErrorMessage } from '../services/api';
 import { logOut } from '../services/authService';
 import useAuthStore from '../store/authStore';
 import useTimeStore from '../store/timeStore';
 import useThemeStore from '../store/themeStore';
-import { verifyBiometric, isBiometricAvailable, getBiometricLabel } from '../services/biometricAuth';
+import { isBiometricAvailable, getBiometricLabel } from '../services/biometricAuth';
 import { validateWifiConnection, getAllowedWifiName } from '../services/wifiService';
+import { validateAttendanceLocation } from '../services/locationService';
 import { hasFaceData } from '../services/faceRecognitionService';
 
 const triggerHaptic = (type = 'light') => {
@@ -120,12 +122,27 @@ export default function DashboardScreen({ navigation }) {
   const [checkOutPressed, setCheckOutPressed] = useState(false);
   const [wifiStatus, setWifiStatus] = useState({ valid: false, message: 'Checking...' });
   const [biometricStatus, setBiometricStatus] = useState({ available: false, label: 'Biometric' });
+  // connectStatus: combined WiFi + location fallback state
+  const [connectStatus, setConnectStatus] = useState({ valid: false, message: 'Checking...', type: 'checking' });
+  const [faceRegistered, setFaceRegistered] = useState(false);
   const timerRef = useRef(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const checkRequirements = useCallback(async () => {
     const wifiValidation = await validateWifiConnection();
     setWifiStatus(wifiValidation);
+
+    if (wifiValidation.valid) {
+      setConnectStatus({ valid: true, message: wifiValidation.message, type: 'wifi' });
+    } else {
+      // WiFi failed — try location fallback
+      const locResult = await validateAttendanceLocation();
+      if (locResult.valid) {
+        setConnectStatus({ valid: true, message: locResult.message, type: 'location' });
+      } else {
+        setConnectStatus({ valid: false, message: wifiValidation.message, type: 'none' });
+      }
+    }
 
     const biometricAvailable = await isBiometricAvailable();
     const biometricLabelText = await getBiometricLabel();
@@ -135,6 +152,17 @@ export default function DashboardScreen({ navigation }) {
   useEffect(() => {
     checkRequirements();
   }, [checkRequirements]);
+
+  // Re-check face status and requirements whenever screen comes into focus
+  // (e.g. returning from FaceRegistration)
+  useFocusEffect(
+    useCallback(() => {
+      checkRequirements();
+      if (user?.id) {
+        hasFaceData(user.id).then(setFaceRegistered);
+      }
+    }, [checkRequirements, user?.id])
+  );
 
   const fetchStatus = useCallback(async () => {
     setStatusError(null);
@@ -194,14 +222,33 @@ export default function DashboardScreen({ navigation }) {
       return;
     }
 
+    // Step 1: Check WiFi
     const wifiValidation = await validateWifiConnection();
     setWifiStatus(wifiValidation);
-    if (!wifiValidation.valid) {
-      Alert.alert('WiFi Required', wifiValidation.message);
-      return;
+
+    let checkInMethod = 'wifi';
+    let locationData = null;
+
+    if (wifiValidation.valid) {
+      setConnectStatus({ valid: true, message: wifiValidation.message, type: 'wifi' });
+    } else {
+      // Step 2: WiFi unavailable — try location fallback
+      const locResult = await validateAttendanceLocation();
+      if (locResult.valid) {
+        checkInMethod = 'location';
+        locationData = locResult.location;
+        setConnectStatus({ valid: true, message: locResult.message, type: 'location' });
+      } else {
+        setConnectStatus({ valid: false, message: wifiValidation.message, type: 'none' });
+        Alert.alert(
+          'Cannot Check In',
+          `Please connect to "${getAllowedWifiName()}" WiFi or enable GPS location.\n\n${wifiValidation.message}`
+        );
+        return;
+      }
     }
 
-    navigation.navigate('FaceVerification', { mode: 'checkin' });
+    navigation.navigate('FaceVerification', { mode: 'checkin', checkInMethod, location: locationData });
   };
 
   const handleCheckOut = () => {
@@ -280,22 +327,70 @@ export default function DashboardScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {/* WiFi Status */}
+        {/* Connection Status (WiFi or Location fallback) */}
         {!isCheckedIn && (
           <LinearGradient
-            colors={wifiStatus.valid ? [g.mintSoft, grad.card[1]] : [g.coralSoft, grad.card[1]]}
-            style={{ borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: wifiStatus.valid ? g.mint : g.coral }}
+            colors={
+              connectStatus.type === 'wifi' ? [g.mintSoft, grad.card[1]] :
+              connectStatus.type === 'location' ? ['rgba(74,144,226,0.15)', grad.card[1]] :
+              connectStatus.type === 'checking' ? [g.glass, grad.card[1]] :
+              [g.coralSoft, grad.card[1]]
+            }
+            style={{
+              borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1,
+              borderColor:
+                connectStatus.type === 'wifi' ? g.mint :
+                connectStatus.type === 'location' ? '#4a90e2' :
+                connectStatus.type === 'checking' ? g.border :
+                g.coral,
+            }}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 16, marginRight: 8 }}>{wifiStatus.valid ? '📶' : '⚠️'}</Text>
+              <Text style={{ fontSize: 16, marginRight: 8 }}>
+                {connectStatus.type === 'wifi' ? '📶' :
+                 connectStatus.type === 'location' ? '📍' :
+                 connectStatus.type === 'checking' ? '🔄' : '⚠️'}
+              </Text>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: wifiStatus.valid ? g.mint : g.coral, fontSize: 13, fontWeight: '700' }}>
-                  {wifiStatus.valid ? 'WiFi Connected' : 'WiFi Required'}
+                <Text style={{
+                  fontSize: 13, fontWeight: '700',
+                  color: connectStatus.type === 'wifi' ? g.mint :
+                         connectStatus.type === 'location' ? '#4a90e2' :
+                         connectStatus.type === 'checking' ? g.textMuted : g.coral,
+                }}>
+                  {connectStatus.type === 'wifi' ? 'WiFi Connected' :
+                   connectStatus.type === 'location' ? 'Using GPS Location' :
+                   connectStatus.type === 'checking' ? 'Checking connection...' :
+                   'No Connection'}
                 </Text>
                 <Text style={{ color: g.textMuted, fontSize: 12, marginTop: 2 }}>
-                  {wifiStatus.valid ? wifiStatus.message : `Connect to "${getAllowedWifiName()}" WiFi to check in`}
+                  {connectStatus.type === 'none'
+                    ? `Connect to "${getAllowedWifiName()}" WiFi or enable location`
+                    : connectStatus.message}
                 </Text>
               </View>
+            </View>
+          </LinearGradient>
+        )}
+
+        {/* Face Registration Banner */}
+        {!isCheckedIn && !faceRegistered && (
+          <LinearGradient
+            colors={[g.coralSoft, grad.card[1]]}
+            style={{ borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: g.coral }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 16, marginRight: 8 }}>👤</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: g.coral, fontSize: 13, fontWeight: '700' }}>Face Not Registered</Text>
+                <Text style={{ color: g.textMuted, fontSize: 12, marginTop: 2 }}>Register your face in Settings before checking in</Text>
+              </View>
+              <TouchableOpacity
+                style={{ backgroundColor: g.coral, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 }}
+                onPress={() => navigation.navigate('Settings')}
+              >
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>Go</Text>
+              </TouchableOpacity>
             </View>
           </LinearGradient>
         )}

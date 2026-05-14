@@ -66,7 +66,10 @@ export function getApiErrorMessage(error) {
 
 // ─── API Calls ────────────────────────────────────────────────────────────────
 
-export const checkIn = () => api.post('/checkin');
+export const checkIn = (location = null) =>
+  api.post('/checkin', location
+    ? { latitude: location.latitude, longitude: location.longitude, accuracy: location.accuracy ?? null }
+    : {});
 
 export const checkOut = () => api.post('/checkout');
 

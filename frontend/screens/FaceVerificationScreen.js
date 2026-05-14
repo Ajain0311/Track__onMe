@@ -22,7 +22,7 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const CAMERA_SIZE = Math.min(screenWidth - 48, screenHeight * 0.42, 380);
 
 export default function FaceVerificationScreen({ navigation, route }) {
-  const { mode } = route.params || { mode: 'checkin' };
+  const { mode, location: routeLocation = null } = route.params || { mode: 'checkin' };
   const isWeb = Platform.OS === 'web';
   const { colors: g, gradients: grad } = useThemeStore();
   const { user } = useAuthStore();
@@ -114,7 +114,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
 
   const performCheckIn = async () => {
     try {
-      await checkIn();
+      await checkIn(routeLocation);
       await storeCheckIn();
       clearTimeout(slowTimerRef.current);
       setSlowRequest(false);

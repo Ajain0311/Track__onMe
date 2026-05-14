@@ -11,13 +11,19 @@ const mapRow = (row) => ({
   checkOutTime: row.check_out_time,
   totalDuration: row.total_duration,
   date: row.date,
+  latitude: row.latitude ?? null,
+  longitude: row.longitude ?? null,
+  accuracy: row.accuracy ?? null,
+  checkInMethod: row.check_in_method ?? 'wifi',
   createdAt: row.created_at,
 });
 
 /**
  * Create a new check-in record.
+ * @param {string} userId
+ * @param {{ latitude, longitude, accuracy, method }|null} location
  */
-const createCheckIn = async (userId) => {
+const createCheckIn = async (userId, location = null) => {
   const now = new Date();
   const { data, error } = await supabase
     .from('attendance')
@@ -27,6 +33,10 @@ const createCheckIn = async (userId) => {
       check_out_time: null,
       total_duration: null,
       date: now.toISOString().split('T')[0],
+      latitude: location?.latitude ?? null,
+      longitude: location?.longitude ?? null,
+      accuracy: location?.accuracy ?? null,
+      check_in_method: location ? 'location' : 'wifi',
     })
     .select()
     .single();
