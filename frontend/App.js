@@ -1,8 +1,7 @@
-// App.js
-// Root of the app. Handles Supabase auth state listening and navigation.
+// App.js — Root: Supabase auth, navigation, WiFi monitoring, animated splash
 
-import React, { useEffect } from 'react';
-import { ActivityIndicator, View, StyleSheet, Text, Appearance } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { ActivityIndicator, View, StyleSheet, Text, Appearance, Animated } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -25,11 +24,13 @@ import FaceVerificationScreen from './screens/FaceVerificationScreen';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-function TabIcon({ emoji, color }) {
+function TabIcon({ emoji, focused }) {
   const { Text: RNText } = require('react-native');
-  const { colors: g } = useThemeStore();
-  const active = color === g.accent;
-  return <RNText style={{ fontSize: 22, opacity: active ? 1 : 0.45 }}>{emoji}</RNText>;
+  return (
+    <RNText style={{ fontSize: focused ? 22 : 20, opacity: focused ? 1 : 0.45 }}>
+      {emoji}
+    </RNText>
+  );
 }
 
 function MainTabs() {
@@ -40,27 +41,63 @@ function MainTabs() {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: isDark ? 'rgba(10,10,22,0.94)' : 'rgba(255,255,255,0.94)',
-          borderTopColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
+          backgroundColor: isDark ? 'rgba(8,8,20,0.96)' : 'rgba(255,255,255,0.96)',
+          borderTopColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
           borderTopWidth: 1,
           height: 72,
           paddingBottom: 12,
           paddingTop: 8,
         },
         tabBarActiveTintColor: g.accent,
-        tabBarInactiveTintColor: isDark ? '#4a4a62' : '#9ca3af',
-        tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
+        tabBarInactiveTintColor: isDark ? '#3a3a52' : '#9ca3af',
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '700', marginTop: 2 },
       }}
     >
-      <Tab.Screen name="Dashboard" component={DashboardScreen}
-        options={{ tabBarLabel: 'Home', tabBarIcon: ({ color }) => <TabIcon emoji="🏠" color={color} /> }} />
-      <Tab.Screen name="Analytics" component={AnalyticsScreen}
-        options={{ tabBarLabel: 'Stats', tabBarIcon: ({ color }) => <TabIcon emoji="📊" color={color} /> }} />
-      <Tab.Screen name="History" component={HistoryScreen}
-        options={{ tabBarLabel: 'History', tabBarIcon: ({ color }) => <TabIcon emoji="📋" color={color} /> }} />
-      <Tab.Screen name="Settings" component={SettingsScreen}
-        options={{ tabBarLabel: 'Settings', tabBarIcon: ({ color }) => <TabIcon emoji="⚙️" color={color} /> }} />
+      <Tab.Screen
+        name="Dashboard"
+        component={DashboardScreen}
+        options={{ tabBarLabel: 'Home', tabBarIcon: ({ focused }) => <TabIcon emoji="🏠" focused={focused} /> }}
+      />
+      <Tab.Screen
+        name="Analytics"
+        component={AnalyticsScreen}
+        options={{ tabBarLabel: 'Stats', tabBarIcon: ({ focused }) => <TabIcon emoji="📊" focused={focused} /> }}
+      />
+      <Tab.Screen
+        name="History"
+        component={HistoryScreen}
+        options={{ tabBarLabel: 'History', tabBarIcon: ({ focused }) => <TabIcon emoji="📋" focused={focused} /> }}
+      />
+      <Tab.Screen
+        name="Settings"
+        component={SettingsScreen}
+        options={{ tabBarLabel: 'Settings', tabBarIcon: ({ focused }) => <TabIcon emoji="⚙️" focused={focused} /> }}
+      />
     </Tab.Navigator>
+  );
+}
+
+function SplashScreen() {
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(fadeAnim, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, { toValue: 1.08, duration: 800, useNativeDriver: true }),
+        Animated.timing(pulseAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  return (
+    <Animated.View style={[styles.splash, { opacity: fadeAnim }]}>
+      <Animated.Text style={[styles.splashEmoji, { transform: [{ scale: pulseAnim }] }]}>⏱</Animated.Text>
+      <Text style={styles.splashTitle}>AttendTrack</Text>
+      <ActivityIndicator size="small" color="#8b7cff" style={{ marginTop: 28 }} />
+      <Text style={styles.splashHint}>Loading your workspace…</Text>
+    </Animated.View>
   );
 }
 
@@ -68,13 +105,11 @@ export default function App() {
   const { user, loading: authLoading, setUser, setLoading: setAuthLoading } = useAuthStore();
   const { initialize: initializeTheme, colors: g } = useThemeStore();
 
-  // Initialize theme and clear old (non-user-scoped) AsyncStorage keys
   useEffect(() => {
     initializeTheme();
     useTimeStore.getState().clearOldGlobalData();
   }, []);
 
-  // React to system theme changes
   useEffect(() => {
     const sub = Appearance.addChangeListener(() => {
       useThemeStore.getState().updateSystemTheme();
@@ -82,23 +117,17 @@ export default function App() {
     return () => sub.remove();
   }, []);
 
-  // Subscribe to Supabase auth state changes
   useEffect(() => {
-    // Hydrate session on first load
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       setAuthLoading(false);
     });
-
-    // Listen for future sign-in / sign-out events
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
-  // Start/stop WiFi monitoring based on auth state
   useEffect(() => {
     if (user) {
       startWifiMonitoring();
@@ -109,12 +138,7 @@ export default function App() {
   }, [user]);
 
   if (authLoading || !g) {
-    return (
-      <View style={[styles.splash, { backgroundColor: '#06060f' }]}>
-        <ActivityIndicator size="large" color="#8b7cff" />
-        <Text style={styles.splashHint}>Loading...</Text>
-      </View>
-    );
+    return <SplashScreen />;
   }
 
   return (
@@ -130,8 +154,8 @@ export default function App() {
           {user ? (
             <>
               <Stack.Screen name="Main" component={MainTabs} />
-              <Stack.Screen name="FaceRegistration" component={FaceRegistrationScreen} />
-              <Stack.Screen name="FaceVerification" component={FaceVerificationScreen} />
+              <Stack.Screen name="FaceRegistration" component={FaceRegistrationScreen} options={{ animation: 'slide_from_bottom' }} />
+              <Stack.Screen name="FaceVerification" component={FaceVerificationScreen} options={{ animation: 'slide_from_bottom' }} />
             </>
           ) : (
             <Stack.Screen name="Login" component={LoginScreen} />
@@ -143,6 +167,16 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  splash: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  splashHint: { marginTop: 16, color: '#9494ac', fontSize: 14 },
+  splash: {
+    flex: 1, justifyContent: 'center', alignItems: 'center',
+    backgroundColor: '#06060f',
+  },
+  splashEmoji: { fontSize: 54, marginBottom: 16 },
+  splashTitle: {
+    fontSize: 28, fontWeight: '900', color: '#f2f2f8',
+    letterSpacing: -0.5,
+  },
+  splashHint: {
+    marginTop: 10, color: '#5c5c78', fontSize: 13, fontWeight: '500',
+  },
 });

@@ -1,4 +1,4 @@
-// screens/DashboardScreen.js — glossy dashboard + check-in/out with total time tracking
+// screens/DashboardScreen.js — optimized with parallel data loading, goal progress, streak
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
@@ -8,11 +8,12 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { checkIn, checkOut, getStatus, getApiErrorMessage } from '../services/api';
+import { getStatus, getApiErrorMessage } from '../services/api';
 import { logOut } from '../services/authService';
 import useAuthStore from '../store/authStore';
 import useTimeStore from '../store/timeStore';
 import useThemeStore from '../store/themeStore';
+import useGoalStore from '../store/goalStore';
 import { isBiometricAvailable, getBiometricLabel } from '../services/biometricAuth';
 import { validateWifiConnection, getAllowedWifiName } from '../services/wifiService';
 import { validateAttendanceLocation } from '../services/locationService';
@@ -22,80 +23,27 @@ const triggerHaptic = (type = 'light') => {
   if (Platform.OS === 'web') return;
   try {
     const Haptics = require('expo-haptics');
-    if (type === 'success') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } else if (type === 'error') {
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-    } else {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    }
+    if (type === 'success') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    else if (type === 'error') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    else Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   } catch {
     Vibration.vibrate(type === 'success' ? 50 : 30);
   }
 };
 
-const formatDuration = (totalSeconds) => {
-  const h = Math.floor(totalSeconds / 3600).toString().padStart(2, '0');
-  const m = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, '0');
-  const s = (totalSeconds % 60).toString().padStart(2, '0');
-  return `${h}:${m}:${s}`;
+const pad2 = (n) => String(n).padStart(2, '0');
+const formatDuration = (s) => `${pad2(Math.floor(s / 3600))}:${pad2(Math.floor((s % 3600) / 60))}:${pad2(s % 60)}`;
+const formatDurationCompact = (s) => {
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return '0m';
 };
-
-const formatDurationCompact = (totalSeconds) => {
-  const h = Math.floor(totalSeconds / 3600);
-  const m = Math.floor((totalSeconds % 3600) / 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-};
-
-const formatTime = (iso) => {
-  if (!iso) return '--:--';
-  return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-};
-
-const getGreeting = () => {
-  const h = new Date().getHours();
-  if (h < 12) return 'Morning';
-  if (h < 17) return 'Afternoon';
-  return 'Evening';
-};
-
-const staticStyles = StyleSheet.create({
-  fill: { flex: 1 },
-  scroll: { flex: 1 },
-  inner: { padding: 24, paddingTop: 56, paddingBottom: 100 },
-  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 22 },
-  statusRow: { flexDirection: 'row', alignItems: 'center' },
-  statusDot: { width: 10, height: 10, borderRadius: 5, marginRight: 12 },
-  statusText: { fontSize: 18, fontWeight: '800' },
-  statusSub: { fontSize: 13, marginTop: 10, lineHeight: 20 },
-  sessionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
-  liveIndicator: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
-  timerLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
-  timerValue: { fontSize: 44, fontWeight: '900', marginTop: 8, fontVariant: ['tabular-nums'] },
-  timerSub: { fontSize: 13, marginTop: 8 },
-  totalTimeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  totalTimeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
-  totalTimeBadgeText: { fontSize: 11, fontWeight: '700' },
-  totalTimeValue: { fontSize: 36, fontWeight: '900', marginBottom: 16, fontVariant: ['tabular-nums'] },
-  timeStatsRow: { flexDirection: 'row', alignItems: 'center', paddingTop: 12 },
-  timeStat: { flex: 1, alignItems: 'center' },
-  timeStatValue: { fontSize: 18, fontWeight: '800', marginBottom: 4 },
-  timeStatLabel: { fontSize: 12 },
-  timeStatDivider: { width: 1, height: 30 },
-  buttonRow: { flexDirection: 'row', gap: 12, marginBottom: 22 },
-  btnShell: { flex: 1, borderRadius: 18, overflow: 'hidden', elevation: 6, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 12, shadowOffset: { width: 0, height: 6 } },
-  btnOff: { opacity: 0.45 },
-  btnPressed: { transform: [{ scale: 0.96 }] },
-  btnGrad: { paddingVertical: 20, alignItems: 'center', justifyContent: 'center' },
-  btnEmoji: { fontSize: 18, color: 'rgba(255,255,255,0.9)', marginBottom: 4 },
-  btnLabel: { color: '#fff', fontSize: 15, fontWeight: '800' },
-  infoTitle: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
-  infoDate: { fontSize: 17, fontWeight: '800', marginTop: 6 },
-  infoHint: { fontSize: 12, marginTop: 8, lineHeight: 18 },
-  errorBannerTitle: { fontSize: 15, fontWeight: '800', marginBottom: 8 },
-  errorBannerText: { fontSize: 13, lineHeight: 20 },
-  retryBtnText: { fontWeight: '800', fontSize: 14 },
-});
+const formatTime = (iso) => iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--';
+const formatClockTime = (d) => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const formatDateFull = (d) => d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+const getGreeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
+const getInitials = (email) => email ? email.charAt(0).toUpperCase() : '?';
 
 export default function DashboardScreen({ navigation }) {
   const user = useAuthStore((s) => s.user);
@@ -104,6 +52,7 @@ export default function DashboardScreen({ navigation }) {
     isCheckedIn: storeIsCheckedIn,
     currentSessionSeconds,
     totalTimeSeconds,
+    dailyTotals,
     checkIn: storeCheckIn,
     checkOut: storeCheckOut,
     tick,
@@ -111,6 +60,7 @@ export default function DashboardScreen({ navigation }) {
     getWeekTotal,
     initialize: initializeTimeStore,
   } = useTimeStore();
+  const { goals, getDailyGoalProgress, computeStreak, initialize: initGoals } = useGoalStore();
 
   const [isCheckedIn, setIsCheckedIn] = useState(false);
   const [activeSession, setActiveSession] = useState(null);
@@ -120,22 +70,33 @@ export default function DashboardScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [checkInPressed, setCheckInPressed] = useState(false);
   const [checkOutPressed, setCheckOutPressed] = useState(false);
-  const [wifiStatus, setWifiStatus] = useState({ valid: false, message: 'Checking...' });
-  const [biometricStatus, setBiometricStatus] = useState({ available: false, label: 'Biometric' });
-  // connectStatus: combined WiFi + location fallback state
   const [connectStatus, setConnectStatus] = useState({ valid: false, message: 'Checking...', type: 'checking' });
   const [faceRegistered, setFaceRegistered] = useState(false);
-  const timerRef = useRef(null);
-  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const [clockTime, setClockTime] = useState(new Date());
 
+  const timerRef = useRef(null);
+  const clockRef = useRef(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
+  const dotAnim = useRef(new Animated.Value(1)).current;
+  const goalBarAnim = useRef(new Animated.Value(0)).current;
+  const cardFadeAnim = useRef(new Animated.Value(0)).current;
+  const storeCheckedInRef = useRef(storeIsCheckedIn);
+  useEffect(() => { storeCheckedInRef.current = storeIsCheckedIn; }, [storeIsCheckedIn]);
+
+  const effectiveIsCheckedIn = isCheckedIn || storeIsCheckedIn;
+
+  // ── Clock ──
+  useEffect(() => {
+    clockRef.current = setInterval(() => setClockTime(new Date()), 30000);
+    return () => clearInterval(clockRef.current);
+  }, []);
+
+  // ── Requirements check ──
   const checkRequirements = useCallback(async () => {
     const wifiValidation = await validateWifiConnection();
-    setWifiStatus(wifiValidation);
-
     if (wifiValidation.valid) {
       setConnectStatus({ valid: true, message: wifiValidation.message, type: 'wifi' });
     } else {
-      // WiFi failed — try location fallback
       const locResult = await validateAttendanceLocation();
       if (locResult.valid) {
         setConnectStatus({ valid: true, message: locResult.message, type: 'location' });
@@ -143,27 +104,16 @@ export default function DashboardScreen({ navigation }) {
         setConnectStatus({ valid: false, message: wifiValidation.message, type: 'none' });
       }
     }
-
-    const biometricAvailable = await isBiometricAvailable();
-    const biometricLabelText = await getBiometricLabel();
-    setBiometricStatus({ available: biometricAvailable, label: biometricLabelText });
   }, []);
 
-  useEffect(() => {
-    checkRequirements();
-  }, [checkRequirements]);
-
-  // Re-check face status and requirements whenever screen comes into focus
-  // (e.g. returning from FaceRegistration)
   useFocusEffect(
     useCallback(() => {
       checkRequirements();
-      if (user?.id) {
-        hasFaceData(user.id).then(setFaceRegistered);
-      }
+      if (user?.id) hasFaceData(user.id).then(setFaceRegistered);
     }, [checkRequirements, user?.id])
   );
 
+  // ── Status fetch ──
   const fetchStatus = useCallback(async () => {
     setStatusError(null);
     try {
@@ -171,87 +121,97 @@ export default function DashboardScreen({ navigation }) {
       const { isCheckedIn: checkedIn, activeSession: session } = res.data;
       setIsCheckedIn(checkedIn);
       setActiveSession(session);
-
-      if (checkedIn && !storeIsCheckedIn) {
-        storeCheckIn();
-      } else if (!checkedIn && storeIsCheckedIn) {
-        await storeCheckOut();
-      }
+      if (checkedIn && !storeCheckedInRef.current) storeCheckIn();
+      else if (!checkedIn && storeCheckedInRef.current) await storeCheckOut();
     } catch (error) {
-      console.error('[Status] Error:', error.message);
       setStatusError(getApiErrorMessage(error));
     } finally {
       setStatusLoading(false);
       setRefreshing(false);
     }
-  }, [storeIsCheckedIn, storeCheckIn, storeCheckOut]);
+  }, [storeCheckIn, storeCheckOut]);
+
+  // ── Mount: parallel fetch for faster load ──
+  useEffect(() => {
+    initializeTimeStore();
+    initGoals(user?.id);
+    // Run status + requirements in parallel instead of sequentially
+    Promise.all([fetchStatus(), checkRequirements()]);
+    if (user?.id) hasFaceData(user.id).then(setFaceRegistered);
+  }, []);
+
+  // ── Animate cards in after load ──
+  useEffect(() => {
+    if (!statusLoading) {
+      Animated.timing(cardFadeAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+    }
+  }, [statusLoading]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    await checkRequirements();
-    await fetchStatus();
+    await Promise.all([checkRequirements(), fetchStatus()]);
   }, [fetchStatus, checkRequirements]);
 
-  useEffect(() => {
-    initializeTimeStore();
-    fetchStatus();
-  }, [fetchStatus, initializeTimeStore]);
+  // ── Goal bar animation ──
+  const todayTotal = getTodayTotal() + (effectiveIsCheckedIn ? currentSessionSeconds : 0);
+  const goalProgress = getDailyGoalProgress(todayTotal);
 
   useEffect(() => {
-    if (isCheckedIn || storeIsCheckedIn) {
+    Animated.timing(goalBarAnim, {
+      toValue: goalProgress,
+      duration: 800,
+      useNativeDriver: false,
+    }).start();
+  }, [goalProgress]);
+
+  // ── Timer + pulse ──
+  useEffect(() => {
+    if (effectiveIsCheckedIn) {
       timerRef.current = setInterval(() => tick(), 1000);
       Animated.loop(
         Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.05, duration: 1000, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1.03, duration: 900, useNativeDriver: true }),
+          Animated.timing(pulseAnim, { toValue: 1, duration: 900, useNativeDriver: true }),
+        ])
+      ).start();
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(dotAnim, { toValue: 0.25, duration: 700, useNativeDriver: true }),
+          Animated.timing(dotAnim, { toValue: 1, duration: 700, useNativeDriver: true }),
         ])
       ).start();
     } else {
       clearInterval(timerRef.current);
-      pulseAnim.setValue(1);
+      pulseAnim.stopAnimation(); dotAnim.stopAnimation();
+      pulseAnim.setValue(1); dotAnim.setValue(1);
     }
-    return () => {
-      clearInterval(timerRef.current);
-      pulseAnim.setValue(1);
-    };
-  }, [isCheckedIn, storeIsCheckedIn, tick]);
+    return () => clearInterval(timerRef.current);
+  }, [effectiveIsCheckedIn, tick]);
 
+  // ── Actions ──
   const handleCheckIn = async () => {
-    if (isCheckedIn) {
-      Alert.alert('Already Checked In', 'You are already checked in.');
-      return;
-    }
-
-    // Step 1: Check WiFi
+    if (effectiveIsCheckedIn) return;
+    triggerHaptic('light');
     const wifiValidation = await validateWifiConnection();
-    setWifiStatus(wifiValidation);
-
-    let checkInMethod = 'wifi';
     let locationData = null;
-
     if (wifiValidation.valid) {
       setConnectStatus({ valid: true, message: wifiValidation.message, type: 'wifi' });
     } else {
-      // Step 2: WiFi unavailable — try location fallback
       const locResult = await validateAttendanceLocation();
       if (locResult.valid) {
-        checkInMethod = 'location';
         locationData = locResult.location;
         setConnectStatus({ valid: true, message: locResult.message, type: 'location' });
       } else {
         setConnectStatus({ valid: false, message: wifiValidation.message, type: 'none' });
-        Alert.alert(
-          'Cannot Check In',
-          `Please connect to "${getAllowedWifiName()}" WiFi or enable GPS location.\n\n${wifiValidation.message}`
-        );
+        Alert.alert('Cannot Check In', `Connect to "${getAllowedWifiName()}" WiFi or enable GPS.\n\n${wifiValidation.message}`);
         return;
       }
     }
-
-    navigation.navigate('FaceVerification', { mode: 'checkin', checkInMethod, location: locationData });
+    navigation.navigate('FaceVerification', { mode: 'checkin', location: locationData });
   };
 
   const handleCheckOut = () => {
+    triggerHaptic('light');
     navigation.navigate('FaceVerification', { mode: 'checkout' });
   };
 
@@ -260,75 +220,270 @@ export default function DashboardScreen({ navigation }) {
     if (Platform.OS === 'web') {
       if (window.confirm('Sign out?')) await go();
     } else {
-      Alert.alert('Sign Out', 'Are you sure?', [
+      Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
         { text: 'Cancel', style: 'cancel' },
         { text: 'Sign Out', style: 'destructive', onPress: go },
       ]);
     }
   };
 
+  // ── Derived values ──
+  const weekTotal = getWeekTotal() + (effectiveIsCheckedIn ? currentSessionSeconds : 0);
+  const allTotal = totalTimeSeconds + currentSessionSeconds;
+  const streak = computeStreak(dailyTotals);
+  const goalPct = Math.round(goalProgress * 100);
+
+  // ── Skeleton loading ──
   if (statusLoading) {
     return (
-      <LinearGradient colors={grad.screen} style={staticStyles.fill}>
-        <ScrollView style={staticStyles.scroll} contentContainerStyle={staticStyles.inner}>
-          <View style={staticStyles.topRow}>
+      <LinearGradient colors={grad.screen} style={s.fill}>
+        <ScrollView style={s.scroll} contentContainerStyle={s.inner}>
+          {/* Header skeleton */}
+          <View style={s.topRow}>
             <View style={{ flex: 1 }}>
-              <View style={{ height: 16, width: 100, backgroundColor: g.glass, borderRadius: 4 }} />
-              <View style={{ height: 16, width: 180, backgroundColor: g.glass, borderRadius: 4, marginTop: 8 }} />
+              <View style={{ height: 12, width: 88, backgroundColor: g.glass, borderRadius: 6 }} />
+              <View style={{ height: 16, width: 180, backgroundColor: g.glass, borderRadius: 6, marginTop: 9 }} />
             </View>
-            <View style={{ backgroundColor: g.glass, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: g.border }} />
+            <View style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: g.glass }} />
           </View>
-          <LinearGradient colors={grad.card} style={{ borderRadius: 20, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: g.border }}>
-            <View style={staticStyles.statusRow}>
-              <View style={[staticStyles.statusDot, { backgroundColor: g.glass }]} />
-              <View style={{ height: 16, width: 120, backgroundColor: g.glass, borderRadius: 4 }} />
-            </View>
-            <View style={{ height: 16, width: '80%', backgroundColor: g.glass, borderRadius: 4, marginTop: 10 }} />
+          {/* Status card skeleton */}
+          <LinearGradient colors={grad.card} style={{ borderRadius: 22, padding: 22, marginBottom: 18, borderWidth: 1, borderColor: g.border }}>
+            <View style={{ height: 18, width: 130, backgroundColor: g.glass, borderRadius: 6, marginBottom: 12 }} />
+            <View style={{ height: 12, width: '70%', backgroundColor: g.glass, borderRadius: 6 }} />
           </LinearGradient>
-          <View style={staticStyles.buttonRow}>
-            <View style={[staticStyles.btnShell, { backgroundColor: g.glass }]} />
-            <View style={[staticStyles.btnShell, { backgroundColor: g.glass }]} />
+          {/* Buttons skeleton */}
+          <View style={s.buttonRow}>
+            <View style={[s.btnShell, { backgroundColor: g.glass, height: 76 }]} />
+            <View style={[s.btnShell, { backgroundColor: g.glass, height: 76 }]} />
           </View>
+          {/* Timer skeleton */}
+          <LinearGradient colors={grad.card} style={{ borderRadius: 24, padding: 24, marginBottom: 18, borderWidth: 1, borderColor: g.border }}>
+            <View style={{ height: 12, width: 110, backgroundColor: g.glass, borderRadius: 6, marginBottom: 12 }} />
+            <View style={{ height: 44, width: 170, backgroundColor: g.glass, borderRadius: 6 }} />
+          </LinearGradient>
         </ScrollView>
       </LinearGradient>
     );
   }
 
   return (
-    <LinearGradient colors={grad.screen} style={staticStyles.fill}>
+    <LinearGradient colors={grad.screen} style={s.fill}>
       <ScrollView
-        style={staticStyles.scroll}
-        contentContainerStyle={staticStyles.inner}
+        style={s.scroll}
+        contentContainerStyle={s.inner}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} tintColor={g.accent} />}
+        showsVerticalScrollIndicator={false}
       >
+        {/* ── Error banner ── */}
         {statusError ? (
-          <View style={{ backgroundColor: g.errorBg, borderRadius: 16, padding: 16, marginBottom: 18, borderWidth: 1, borderColor: g.errorBorder }}>
-            <Text style={[staticStyles.errorBannerTitle, { color: '#ffb4c0' }]}>Could not load status</Text>
-            <Text style={[staticStyles.errorBannerText, { color: g.textMuted }]}>{statusError}</Text>
+          <View style={[s.errorBanner, { backgroundColor: g.errorBg, borderColor: g.errorBorder }]}>
+            <Text style={[s.errorTitle, { color: '#ffb4c0' }]}>Could not load status</Text>
+            <Text style={[s.errorBody, { color: g.textMuted }]}>{statusError}</Text>
             <TouchableOpacity
-              style={{ marginTop: 12, alignSelf: 'flex-start', backgroundColor: g.accentSoft, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: g.borderGlow }}
+              style={[s.retryBtn, { backgroundColor: g.accentSoft, borderColor: g.borderGlow }]}
               onPress={() => { setStatusLoading(true); fetchStatus(); }}
             >
-              <Text style={[staticStyles.retryBtnText, { color: g.accent }]}>Retry</Text>
+              <Text style={[s.retryText, { color: g.accent }]}>Retry</Text>
             </TouchableOpacity>
           </View>
         ) : null}
 
-        <View style={staticStyles.topRow}>
+        {/* ── Header row ── */}
+        <View style={s.topRow}>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: g.textMuted, fontSize: 13, fontWeight: '600' }}>Good {getGreeting()}</Text>
-            <Text style={{ color: g.text, fontSize: 17, fontWeight: '800', marginTop: 4, maxWidth: 220 }} numberOfLines={1}>{user?.email}</Text>
+            <Text style={{ color: g.textMuted, fontSize: 13, fontWeight: '600' }}>{getGreeting()}</Text>
+            <Text style={{ color: g.text, fontSize: 15, fontWeight: '800', marginTop: 3, maxWidth: 200 }} numberOfLines={1}>
+              {user?.email?.split('@')[0] || user?.email}
+            </Text>
           </View>
+          <View style={{ alignItems: 'flex-end', gap: 4 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              {streak > 0 && (
+                <View style={[s.streakBadge, { backgroundColor: isDark ? 'rgba(255,179,71,0.18)' : 'rgba(255,179,71,0.15)', borderColor: 'rgba(255,179,71,0.5)' }]}>
+                  <Text style={{ fontSize: 13 }}>🔥</Text>
+                  <Text style={{ color: '#ffb347', fontSize: 12, fontWeight: '800', marginLeft: 4 }}>{streak}d</Text>
+                </View>
+              )}
+              <TouchableOpacity
+                onPress={handleLogout}
+                style={[s.avatarCircle, { backgroundColor: g.accentSoft, borderColor: g.borderGlow }]}
+              >
+                <Text style={{ color: g.accent, fontSize: 16, fontWeight: '900' }}>{getInitials(user?.email)}</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={{ color: g.text, fontSize: 20, fontWeight: '900', fontVariant: ['tabular-nums'] }}>
+              {formatClockTime(clockTime)}
+            </Text>
+            <Text style={{ color: g.textMuted, fontSize: 11, fontWeight: '600' }}>
+              {formatDateFull(clockTime)}
+            </Text>
+          </View>
+        </View>
+
+        {/* ── Status card ── */}
+        <LinearGradient
+          colors={effectiveIsCheckedIn
+            ? [isDark ? 'rgba(62,232,199,0.12)' : 'rgba(62,232,199,0.08)', grad.card[1]]
+            : grad.card}
+          style={[s.statusCard, {
+            borderColor: effectiveIsCheckedIn ? 'rgba(62,232,199,0.5)' : g.border,
+            shadowColor: effectiveIsCheckedIn ? g.mint : 'transparent',
+          }]}
+        >
+          <View style={s.statusRow}>
+            <Animated.View style={[s.statusDot, { backgroundColor: effectiveIsCheckedIn ? g.mint : g.warn, opacity: effectiveIsCheckedIn ? dotAnim : 1 }]} />
+            <Text style={[s.statusText, { color: effectiveIsCheckedIn ? g.mint : g.warn }]}>
+              {effectiveIsCheckedIn ? 'On the clock' : 'Off the clock'}
+            </Text>
+            {effectiveIsCheckedIn && (
+              <View style={[s.liveBadge, { backgroundColor: 'rgba(62,232,199,0.18)', borderColor: 'rgba(62,232,199,0.4)' }]}>
+                <Text style={{ color: g.mint, fontSize: 10, fontWeight: '800', letterSpacing: 0.8 }}>LIVE</Text>
+              </View>
+            )}
+          </View>
+          <Text style={[s.statusSub, { color: g.textMuted }]}>
+            {effectiveIsCheckedIn
+              ? activeSession ? `Started at ${formatTime(activeSession.checkInTime)}` : 'Your session is live.'
+              : 'Tap check in when you start working.'}
+          </Text>
+        </LinearGradient>
+
+        {/* ── Check In / Out buttons ── */}
+        <View style={s.buttonRow}>
           <TouchableOpacity
-            style={{ backgroundColor: g.glass, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: g.border }}
-            onPress={handleLogout}
+            style={[s.btnShell, (effectiveIsCheckedIn || actionLoading) && s.btnOff, checkInPressed && s.btnPressed]}
+            onPressIn={() => setCheckInPressed(true)}
+            onPressOut={() => setCheckInPressed(false)}
+            onPress={handleCheckIn}
+            disabled={effectiveIsCheckedIn || actionLoading}
+            activeOpacity={0.9}
           >
-            <Text style={{ color: g.coral, fontSize: 13, fontWeight: '700' }}>Sign out</Text>
+            <LinearGradient
+              colors={effectiveIsCheckedIn || actionLoading ? ['#1e3028', '#131323'] : grad.mintBtn}
+              style={s.btnGrad}
+            >
+              {actionLoading && !effectiveIsCheckedIn ? <ActivityIndicator color="#fff" size="small" /> : (
+                <>
+                  <Text style={[s.btnEmoji, { opacity: effectiveIsCheckedIn ? 0.5 : 1 }]}>▶</Text>
+                  <Text style={s.btnLabel}>Check In</Text>
+                </>
+              )}
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[s.btnShell, (!effectiveIsCheckedIn || actionLoading) && s.btnOff, checkOutPressed && s.btnPressed]}
+            onPressIn={() => setCheckOutPressed(true)}
+            onPressOut={() => setCheckOutPressed(false)}
+            onPress={handleCheckOut}
+            disabled={!effectiveIsCheckedIn || actionLoading}
+            activeOpacity={0.9}
+          >
+            <LinearGradient
+              colors={!effectiveIsCheckedIn || actionLoading ? ['#30181e', '#131323'] : grad.coralBtn}
+              style={s.btnGrad}
+            >
+              {actionLoading && effectiveIsCheckedIn ? <ActivityIndicator color="#fff" size="small" /> : (
+                <>
+                  <Text style={[s.btnEmoji, { opacity: !effectiveIsCheckedIn ? 0.5 : 1 }]}>■</Text>
+                  <Text style={s.btnLabel}>Check Out</Text>
+                </>
+              )}
+            </LinearGradient>
           </TouchableOpacity>
         </View>
 
-        {/* Connection Status (WiFi or Location fallback) */}
-        {!isCheckedIn && (
+        {/* ── Live session timer ── */}
+        {effectiveIsCheckedIn ? (
+          <Animated.View style={{ transform: [{ scale: pulseAnim }], marginBottom: 16 }}>
+            <LinearGradient
+              colors={[isDark ? 'rgba(62,232,199,0.10)' : 'rgba(62,232,199,0.07)', isDark ? 'rgba(20,20,40,0.6)' : 'rgba(248,249,250,0.6)']}
+              style={[s.timerCard, { borderColor: 'rgba(62,232,199,0.4)' }]}
+            >
+              <View style={s.timerHeader}>
+                <Animated.View style={[s.timerDot, { backgroundColor: g.mint, opacity: dotAnim }]} />
+                <Text style={[s.timerLabel, { color: g.mint }]}>Current Session</Text>
+              </View>
+              <Text style={[s.timerValue, { color: g.mint }]}>{formatDuration(currentSessionSeconds)}</Text>
+              {activeSession && (
+                <Text style={[s.timerSub, { color: g.textDim }]}>Started at {formatTime(activeSession.checkInTime)}</Text>
+              )}
+            </LinearGradient>
+          </Animated.View>
+        ) : (
+          <LinearGradient
+            colors={grad.card}
+            style={[s.timerCard, { borderColor: g.border, borderStyle: 'dashed', marginBottom: 16 }]}
+          >
+            <Text style={{ color: g.textMuted, fontSize: 15, fontWeight: '700', textAlign: 'center' }}>No active session</Text>
+            <Text style={{ color: g.textDim, fontSize: 12, marginTop: 5, textAlign: 'center' }}>Check in to start tracking</Text>
+          </LinearGradient>
+        )}
+
+        {/* ── Daily goal progress ── */}
+        <LinearGradient colors={grad.card} style={[s.goalCard, { borderColor: g.border }]}>
+          <View style={s.goalHeader}>
+            <View>
+              <Text style={{ color: g.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>DAILY GOAL</Text>
+              <Text style={{ color: g.text, fontSize: 17, fontWeight: '800', marginTop: 2 }}>
+                {formatDurationCompact(todayTotal)}
+                <Text style={{ color: g.textMuted, fontSize: 13, fontWeight: '600' }}> / {goals.dailyHoursGoal}h</Text>
+              </Text>
+            </View>
+            <View style={[s.goalPctBadge, {
+              backgroundColor: goalPct >= 100 ? g.mintSoft : goalPct >= 50 ? g.accentSoft : 'rgba(255,123,156,0.15)',
+              borderColor: goalPct >= 100 ? g.mint : goalPct >= 50 ? g.accent : g.coral,
+            }]}>
+              <Text style={{
+                color: goalPct >= 100 ? g.mint : goalPct >= 50 ? g.accent : g.coral,
+                fontSize: 14, fontWeight: '900',
+              }}>{goalPct}%</Text>
+            </View>
+          </View>
+          <View style={[s.goalTrack, { backgroundColor: g.glass }]}>
+            <Animated.View style={[s.goalFill, {
+              width: goalBarAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] }),
+              backgroundColor: goalPct >= 100 ? g.mint : goalPct >= 60 ? g.accent : g.coral,
+            }]} />
+          </View>
+          {goalPct >= 100 && (
+            <Text style={{ color: g.mint, fontSize: 12, fontWeight: '700', marginTop: 8 }}>
+              🎉 Goal achieved! Great work today.
+            </Text>
+          )}
+        </LinearGradient>
+
+        {/* ── Time stats card ── */}
+        <LinearGradient colors={grad.card} style={[s.statsCard, { borderColor: g.border }]}>
+          <View style={s.statsHeader}>
+            <Text style={{ color: g.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 }}>TIME TRACKER</Text>
+            <View style={[s.statsBadge, { backgroundColor: g.accentSoft }]}>
+              <Text style={{ color: g.accent, fontSize: 10, fontWeight: '800' }}>ALL TIME</Text>
+            </View>
+          </View>
+          <Text style={[s.statsTotal, { color: g.text }]}>{formatDuration(allTotal)}</Text>
+          <View style={[s.statsRow, { borderTopColor: g.border }]}>
+            <View style={s.statItem}>
+              <Text style={[s.statValue, { color: g.text }]}>{formatDurationCompact(todayTotal)}</Text>
+              <Text style={[s.statLabel, { color: g.textMuted }]}>Today</Text>
+            </View>
+            <View style={[s.statDivider, { backgroundColor: g.border }]} />
+            <View style={s.statItem}>
+              <Text style={[s.statValue, { color: g.text }]}>{formatDurationCompact(weekTotal)}</Text>
+              <Text style={[s.statLabel, { color: g.textMuted }]}>This Week</Text>
+            </View>
+            <View style={[s.statDivider, { backgroundColor: g.border }]} />
+            <View style={s.statItem}>
+              <Text style={[s.statValue, { color: streak > 0 ? '#ffb347' : g.text }]}>
+                {streak > 0 ? `🔥 ${streak}` : '0'}
+              </Text>
+              <Text style={[s.statLabel, { color: g.textMuted }]}>Day Streak</Text>
+            </View>
+          </View>
+        </LinearGradient>
+
+        {/* ── Connection status ── */}
+        {!effectiveIsCheckedIn && (
           <LinearGradient
             colors={
               connectStatus.type === 'wifi' ? [g.mintSoft, grad.card[1]] :
@@ -336,194 +491,129 @@ export default function DashboardScreen({ navigation }) {
               connectStatus.type === 'checking' ? [g.glass, grad.card[1]] :
               [g.coralSoft, grad.card[1]]
             }
-            style={{
-              borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1,
+            style={[s.infoCard, {
               borderColor:
                 connectStatus.type === 'wifi' ? g.mint :
                 connectStatus.type === 'location' ? '#4a90e2' :
-                connectStatus.type === 'checking' ? g.border :
-                g.coral,
-            }}
+                connectStatus.type === 'checking' ? g.border : g.coral,
+            }]}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 16, marginRight: 8 }}>
-                {connectStatus.type === 'wifi' ? '📶' :
-                 connectStatus.type === 'location' ? '📍' :
-                 connectStatus.type === 'checking' ? '🔄' : '⚠️'}
+              <Text style={{ fontSize: 18, marginRight: 10 }}>
+                {connectStatus.type === 'wifi' ? '📶' : connectStatus.type === 'location' ? '📍' : connectStatus.type === 'checking' ? '🔄' : '⚠️'}
               </Text>
               <View style={{ flex: 1 }}>
                 <Text style={{
                   fontSize: 13, fontWeight: '700',
-                  color: connectStatus.type === 'wifi' ? g.mint :
-                         connectStatus.type === 'location' ? '#4a90e2' :
-                         connectStatus.type === 'checking' ? g.textMuted : g.coral,
+                  color: connectStatus.type === 'wifi' ? g.mint : connectStatus.type === 'location' ? '#4a90e2' : connectStatus.type === 'checking' ? g.textMuted : g.coral,
                 }}>
-                  {connectStatus.type === 'wifi' ? 'WiFi Connected' :
-                   connectStatus.type === 'location' ? 'Using GPS Location' :
-                   connectStatus.type === 'checking' ? 'Checking connection...' :
-                   'No Connection'}
+                  {connectStatus.type === 'wifi' ? 'WiFi Connected' : connectStatus.type === 'location' ? 'Using GPS Location' : connectStatus.type === 'checking' ? 'Checking connection…' : 'No Connection'}
                 </Text>
-                <Text style={{ color: g.textMuted, fontSize: 12, marginTop: 2 }}>
-                  {connectStatus.type === 'none'
-                    ? `Connect to "${getAllowedWifiName()}" WiFi or enable location`
-                    : connectStatus.message}
+                <Text style={{ color: g.textMuted, fontSize: 11, marginTop: 2 }}>
+                  {connectStatus.type === 'none' ? `Connect to "${getAllowedWifiName()}" WiFi or enable location` : connectStatus.message}
                 </Text>
               </View>
             </View>
           </LinearGradient>
         )}
 
-        {/* Face Registration Banner */}
-        {!isCheckedIn && !faceRegistered && (
-          <LinearGradient
-            colors={[g.coralSoft, grad.card[1]]}
-            style={{ borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: g.coral }}
-          >
+        {/* ── Face not registered ── */}
+        {!effectiveIsCheckedIn && !faceRegistered && (
+          <LinearGradient colors={[g.coralSoft, grad.card[1]]} style={[s.infoCard, { borderColor: g.coral }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 16, marginRight: 8 }}>👤</Text>
+              <Text style={{ fontSize: 18, marginRight: 10 }}>👤</Text>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: g.coral, fontSize: 13, fontWeight: '700' }}>Face Not Registered</Text>
-                <Text style={{ color: g.textMuted, fontSize: 12, marginTop: 2 }}>Register your face in Settings before checking in</Text>
+                <Text style={{ color: g.textMuted, fontSize: 11, marginTop: 2 }}>Register your face in Settings before checking in</Text>
               </View>
               <TouchableOpacity
-                style={{ backgroundColor: g.coral, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 }}
+                style={{ backgroundColor: g.coral, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 }}
                 onPress={() => navigation.navigate('Settings')}
               >
-                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '700' }}>Go</Text>
+                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>Go →</Text>
               </TouchableOpacity>
             </View>
           </LinearGradient>
         )}
 
-        {/* Biometric Status */}
-        {!isCheckedIn && biometricStatus.available && (
-          <LinearGradient
-            colors={[g.accentSoft, grad.card[1]]}
-            style={{ borderRadius: 16, padding: 14, marginBottom: 16, borderWidth: 1, borderColor: g.accent }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 16, marginRight: 8 }}>🔒</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: g.accent, fontSize: 13, fontWeight: '700' }}>{biometricStatus.label} Required</Text>
-                <Text style={{ color: g.textMuted, fontSize: 12, marginTop: 2 }}>{biometricStatus.label} verification required to check in</Text>
-              </View>
-            </View>
-          </LinearGradient>
-        )}
-
-        <LinearGradient colors={grad.card} style={{ borderRadius: 20, padding: 20, marginBottom: 20, borderWidth: 1, borderColor: g.border }}>
-          <View style={staticStyles.statusRow}>
-            <View style={[staticStyles.statusDot, { backgroundColor: isCheckedIn ? g.mint : g.warn }]} />
-            <Text style={[staticStyles.statusText, { color: isCheckedIn ? g.mint : g.warn }]}>
-              {isCheckedIn ? 'On the clock' : 'Off the clock'}
-            </Text>
-          </View>
-          <Text style={[staticStyles.statusSub, { color: g.textMuted }]}>
-            {isCheckedIn ? 'Your session is live — check out when you wrap up.' : 'Tap check in when you start working.'}
+        {/* ── Footer ── */}
+        <View style={[s.footer, { borderColor: g.border }]}>
+          <Text style={{ color: g.textDim, fontSize: 11, textAlign: 'center' }}>
+            Pull to refresh · Time accumulates across sessions
           </Text>
-        </LinearGradient>
-
-        {/* Total Time Card */}
-        <LinearGradient colors={grad.card} style={{ borderRadius: 24, padding: 24, marginBottom: 20, borderWidth: 1, borderColor: g.border }}>
-          <View style={staticStyles.totalTimeHeader}>
-            <Text style={{ color: g.textMuted, fontSize: 13, fontWeight: '600' }}>Total Accumulated Time</Text>
-            <View style={[staticStyles.totalTimeBadge, { backgroundColor: g.accentSoft }]}>
-              <Text style={[staticStyles.totalTimeBadgeText, { color: g.accent }]}>All Time</Text>
-            </View>
-          </View>
-          <Text style={[staticStyles.totalTimeValue, { color: g.text }]}>{formatDuration(totalTimeSeconds + currentSessionSeconds)}</Text>
-          <View style={[staticStyles.timeStatsRow, { borderTopWidth: 1, borderTopColor: g.border }]}>
-            <View style={staticStyles.timeStat}>
-              <Text style={[staticStyles.timeStatValue, { color: g.text }]}>
-                {formatDurationCompact(getTodayTotal() + (isCheckedIn ? currentSessionSeconds : 0))}
-              </Text>
-              <Text style={[staticStyles.timeStatLabel, { color: g.textMuted }]}>Today</Text>
-            </View>
-            <View style={[staticStyles.timeStatDivider, { backgroundColor: g.border }]} />
-            <View style={staticStyles.timeStat}>
-              <Text style={[staticStyles.timeStatValue, { color: g.text }]}>
-                {formatDurationCompact(getWeekTotal() + (isCheckedIn ? currentSessionSeconds : 0))}
-              </Text>
-              <Text style={[staticStyles.timeStatLabel, { color: g.textMuted }]}>This Week</Text>
-            </View>
-          </View>
-        </LinearGradient>
-
-        {/* Session Timer */}
-        {isCheckedIn ? (
-          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
-            <LinearGradient
-              colors={[g.mintSoft, isDark ? 'rgba(20,20,40,0.5)' : 'rgba(248,249,250,0.5)']}
-              style={{ borderRadius: 22, padding: 24, alignItems: 'center', marginBottom: 22, borderWidth: 1, borderColor: 'rgba(62,232,199,0.35)' }}
-            >
-              <View style={staticStyles.sessionHeader}>
-                <View style={[staticStyles.liveIndicator, { backgroundColor: g.mint }]} />
-                <Text style={[staticStyles.timerLabel, { color: g.mint }]}>Current Session</Text>
-              </View>
-              <Text style={[staticStyles.timerValue, { color: g.mint }]}>{formatDuration(currentSessionSeconds)}</Text>
-              {activeSession ? (
-                <Text style={[staticStyles.timerSub, { color: g.textDim }]}>Started {formatTime(activeSession.checkInTime)}</Text>
-              ) : null}
-            </LinearGradient>
-          </Animated.View>
-        ) : (
-          <LinearGradient
-            colors={grad.card}
-            style={{ borderRadius: 22, padding: 32, alignItems: 'center', marginBottom: 22, borderWidth: 1, borderColor: g.border, borderStyle: 'dashed' }}
-          >
-            <Text style={{ color: g.textMuted, fontSize: 16, fontWeight: '600' }}>No active session</Text>
-            <Text style={{ color: g.textDim, fontSize: 13, marginTop: 6 }}>Check in to start tracking time</Text>
-          </LinearGradient>
-        )}
-
-        <View style={staticStyles.buttonRow}>
-          <TouchableOpacity
-            style={[(isCheckedIn || actionLoading) && staticStyles.btnOff, checkInPressed && staticStyles.btnPressed, staticStyles.btnShell]}
-            onPressIn={() => setCheckInPressed(true)}
-            onPressOut={() => setCheckInPressed(false)}
-            onPress={handleCheckIn}
-            disabled={isCheckedIn || actionLoading}
-            activeOpacity={0.9}
-          >
-            <LinearGradient colors={isCheckedIn || actionLoading ? ['#2a3d35', '#1a1a28'] : grad.mintBtn} style={staticStyles.btnGrad}>
-              {actionLoading && !isCheckedIn ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <>
-                  <Text style={staticStyles.btnEmoji}>▶</Text>
-                  <Text style={staticStyles.btnLabel}>Check in</Text>
-                </>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[(!isCheckedIn || actionLoading) && staticStyles.btnOff, checkOutPressed && staticStyles.btnPressed, staticStyles.btnShell]}
-            onPressIn={() => setCheckOutPressed(true)}
-            onPressOut={() => setCheckOutPressed(false)}
-            onPress={handleCheckOut}
-            disabled={!isCheckedIn || actionLoading}
-            activeOpacity={0.9}
-          >
-            <LinearGradient colors={!isCheckedIn || actionLoading ? ['#3d2a32', '#1a1a28'] : grad.coralBtn} style={staticStyles.btnGrad}>
-              {actionLoading && isCheckedIn ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <>
-                  <Text style={staticStyles.btnEmoji}>■</Text>
-                  <Text style={staticStyles.btnLabel}>Check out</Text>
-                </>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ backgroundColor: g.glass, borderRadius: 18, padding: 18, borderWidth: 1, borderColor: g.border }}>
-          <Text style={[staticStyles.infoTitle, { color: g.textMuted }]}>Today</Text>
-          <Text style={[staticStyles.infoDate, { color: g.text }]}>{new Date().toDateString()}</Text>
-          <Text style={[staticStyles.infoHint, { color: g.textDim }]}>Pull down to refresh · Time accumulates across sessions</Text>
         </View>
       </ScrollView>
     </LinearGradient>
   );
 }
+
+const s = StyleSheet.create({
+  fill: { flex: 1 },
+  scroll: { flex: 1 },
+  inner: { padding: 20, paddingTop: 54, paddingBottom: 100 },
+
+  topRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
+
+  streakBadge: {
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: 20, borderWidth: 1,
+  },
+  avatarCircle: {
+    width: 42, height: 42, borderRadius: 21,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1.5,
+  },
+
+  statusCard: {
+    borderRadius: 22, padding: 20, marginBottom: 16,
+    borderWidth: 1.5,
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.35, shadowRadius: 16, elevation: 6,
+  },
+  statusRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  statusDot: { width: 11, height: 11, borderRadius: 5.5, marginRight: 10 },
+  statusText: { fontSize: 19, fontWeight: '900', flex: 1 },
+  statusSub: { fontSize: 13, lineHeight: 20 },
+  liveBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1, marginLeft: 8 },
+
+  buttonRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  btnShell: { flex: 1, borderRadius: 18, overflow: 'hidden', elevation: 8, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
+  btnOff: { opacity: 0.38 },
+  btnPressed: { transform: [{ scale: 0.965 }] },
+  btnGrad: { paddingVertical: 22, alignItems: 'center', justifyContent: 'center' },
+  btnEmoji: { fontSize: 16, color: 'rgba(255,255,255,0.85)', marginBottom: 4 },
+  btnLabel: { color: '#fff', fontSize: 15, fontWeight: '800' },
+
+  timerCard: { borderRadius: 22, padding: 26, alignItems: 'center', borderWidth: 1.5 },
+  timerHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  timerDot: { width: 8, height: 8, borderRadius: 4, marginRight: 8 },
+  timerLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1.2 },
+  timerValue: { fontSize: 52, fontWeight: '900', fontVariant: ['tabular-nums'], lineHeight: 56 },
+  timerSub: { fontSize: 13, marginTop: 8 },
+
+  goalCard: { borderRadius: 20, padding: 18, marginBottom: 14, borderWidth: 1 },
+  goalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
+  goalPctBadge: { paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, borderWidth: 1 },
+  goalTrack: { height: 8, borderRadius: 4, overflow: 'hidden' },
+  goalFill: { height: '100%', borderRadius: 4 },
+
+  statsCard: { borderRadius: 24, padding: 22, marginBottom: 14, borderWidth: 1 },
+  statsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  statsBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  statsTotal: { fontSize: 36, fontWeight: '900', marginBottom: 14, fontVariant: ['tabular-nums'] },
+  statsRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, paddingTop: 14 },
+  statItem: { flex: 1, alignItems: 'center' },
+  statValue: { fontSize: 16, fontWeight: '800', marginBottom: 3 },
+  statLabel: { fontSize: 11, fontWeight: '600' },
+  statDivider: { width: 1, height: 28 },
+
+  infoCard: { borderRadius: 16, padding: 14, marginBottom: 12, borderWidth: 1 },
+
+  errorBanner: { borderRadius: 16, padding: 16, marginBottom: 16, borderWidth: 1 },
+  errorTitle: { fontSize: 15, fontWeight: '800', marginBottom: 6 },
+  errorBody: { fontSize: 13, lineHeight: 20 },
+  retryBtn: { marginTop: 12, alignSelf: 'flex-start', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  retryText: { fontWeight: '800', fontSize: 14 },
+
+  footer: { borderTopWidth: 1, paddingTop: 16, marginTop: 4 },
+});
