@@ -331,21 +331,30 @@ export default function SettingsScreen({ navigation }) {
           </LinearGradient>
         </View>
 
-        {/* Account / admin access */}
-        {!isAdmin && (
-          <View style={st.section}>
-            <Text style={[st.sectionTitle, { color: g.textMuted }]}>ACCOUNT</Text>
-            <LinearGradient colors={grad.card} style={[st.sectionCard, { borderColor: g.border }]}>
-              <SettingRow
-                icon="⚡"
-                title="Reload Admin Access"
-                subtitle={roleRetryMsg || 'Tap if your admin tab is missing after login'}
-                onPress={isRetryingRole ? null : handleRetryRole}
-                rightElement={isRetryingRole ? <ActivityIndicator size="small" color={g.accent} /> : null}
-              />
-            </LinearGradient>
-          </View>
-        )}
+        {/* Account */}
+        <View style={st.section}>
+          <Text style={[st.sectionTitle, { color: g.textMuted }]}>ACCOUNT</Text>
+          <LinearGradient colors={grad.card} style={[st.sectionCard, { borderColor: g.border }]}>
+            <SettingRow
+              icon="🔑"
+              title="Change Password"
+              subtitle="Update your Supabase login password"
+              onPress={() => navigation.navigate('ChangePassword')}
+            />
+            {!isAdmin && (
+              <>
+                <View style={[st.divider, { backgroundColor: g.border }]} />
+                <SettingRow
+                  icon="⚡"
+                  title="Reload Admin Access"
+                  subtitle={roleRetryMsg || 'Tap if your admin tab is missing after login'}
+                  onPress={isRetryingRole ? null : handleRetryRole}
+                  rightElement={isRetryingRole ? <ActivityIndicator size="small" color={g.accent} /> : null}
+                />
+              </>
+            )}
+          </LinearGradient>
+        </View>
 
         {/* Data management */}
         <View style={st.section}>

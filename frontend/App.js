@@ -34,6 +34,7 @@ import LocationRequestScreen from './screens/LocationRequestScreen';
 import MyLocationRequestsScreen from './screens/MyLocationRequestsScreen';
 import NotificationsScreen from './screens/NotificationsScreen';
 import ActivityScreen from './screens/ActivityScreen';
+import ChangePasswordScreen from './screens/ChangePasswordScreen';
 import { ToastProvider } from './components/ToastProvider';
 import ErrorBoundary from './components/ErrorBoundary';
 
@@ -239,6 +240,7 @@ export default function App() {
                 <Stack.Screen name="MyLocationRequests" component={MyLocationRequestsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="Activity" component={ActivityScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ animation: 'slide_from_bottom' }} />
               </>
             ) : (
               <Stack.Screen name="Login" component={LoginScreen} />
