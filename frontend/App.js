@@ -34,6 +34,7 @@ import MyLocationRequestsScreen from './screens/MyLocationRequestsScreen';
 import NotificationsScreen from './screens/NotificationsScreen';
 import ActivityScreen from './screens/ActivityScreen';
 import { ToastProvider } from './components/ToastProvider';
+import ErrorBoundary from './components/ErrorBoundary';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -194,8 +195,9 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <ToastProvider>
-        <NavigationContainer>
+      <ErrorBoundary>
+        <ToastProvider>
+          <NavigationContainer>
           <Stack.Navigator
             screenOptions={{
               headerShown: false,
@@ -225,7 +227,8 @@ export default function App() {
             )}
           </Stack.Navigator>
         </NavigationContainer>
-      </ToastProvider>
+        </ToastProvider>
+      </ErrorBoundary>
     </SafeAreaProvider>
   );
 }
