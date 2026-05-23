@@ -110,7 +110,13 @@ export default function AdminLocationRequestsScreen({ navigation }) {
         ) : null}
         <Text style={{ color: g.textDim, fontSize: 11, marginTop: 4 }}>
           📍 {item.latitude?.toFixed(5)}, {item.longitude?.toFixed(5)} · ⭕ {item.radiusMeters}m
+          {item.accuracy != null ? ` · ±${Math.round(item.accuracy)}m` : ''}
         </Text>
+        {item.capturedAt ? (
+          <Text style={{ color: g.textDim, fontSize: 11 }}>
+            🕓 Captured {new Date(item.capturedAt).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+          </Text>
+        ) : null}
         {item.wifiSsids?.length > 0 && (
           <Text style={{ color: g.textDim, fontSize: 11 }}>
             📶 {item.wifiSsids.join(', ')}

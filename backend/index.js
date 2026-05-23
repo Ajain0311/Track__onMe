@@ -5,11 +5,12 @@ require('dotenv').config();
 const express = require('express');
 const cors    = require('cors');
 
-const logger        = require('./utils/logger');
-const requestLogger = require('./middleware/requestLogger');
-const errorHandler  = require('./middleware/errorHandler');
-const rateLimit     = require('./middleware/rateLimit');
-const AppError      = require('./utils/AppError');
+const logger          = require('./utils/logger');
+const requestLogger   = require('./middleware/requestLogger');
+const errorHandler    = require('./middleware/errorHandler');
+const rateLimit       = require('./middleware/rateLimit');
+const securityHeaders = require('./middleware/securityHeaders');
+const AppError        = require('./utils/AppError');
 
 require('./services/supabase');
 
@@ -36,6 +37,7 @@ app.use(cors({
   credentials: true,
 }));
 
+app.use(securityHeaders);
 app.use(express.json({ limit: '1mb' }));
 app.use(requestLogger);
 

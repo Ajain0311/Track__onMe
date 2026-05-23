@@ -12,6 +12,8 @@ const mapRequest = (r) => ({
   address:       r.address,
   latitude:      r.latitude,
   longitude:     r.longitude,
+  accuracy:      r.accuracy ?? null,
+  capturedAt:    r.captured_at ?? null,
   radiusMeters:  r.radius_meters,
   wifiSsids:     r.wifi_ssids || [],
   notes:         r.notes || null,

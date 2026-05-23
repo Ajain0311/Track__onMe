@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getStatus, getApiErrorMessage } from '../services/api';
+import { getStatus, getNotifications, getApiErrorMessage } from '../services/api';
 import { logOut } from '../services/authService';
 import useAuthStore from '../store/authStore';
 import useTimeStore from '../store/timeStore';
@@ -73,6 +73,7 @@ export default function DashboardScreen({ navigation }) {
   const [connectStatus, setConnectStatus] = useState({ valid: false, message: 'Checking...', type: 'checking' });
   const [faceRegistered, setFaceRegistered] = useState(false);
   const [clockTime, setClockTime] = useState(new Date());
+  const [unreadCount, setUnreadCount] = useState(0);
 
   const timerRef = useRef(null);
   const clockRef = useRef(null);
@@ -145,6 +146,8 @@ export default function DashboardScreen({ navigation }) {
       // Silently refresh status so the timer & button states stay accurate
       // without resetting the loading skeleton every time.
       fetchStatus({ silent: true });
+      // Best-effort unread notification count
+      getNotifications(true).then((r) => setUnreadCount(r.data?.notifications?.length || 0)).catch(() => {});
     }, [checkRequirements, fetchStatus, user?.id])
   );
 
@@ -306,6 +309,18 @@ export default function DashboardScreen({ navigation }) {
                   <Text style={{ color: '#ffb347', fontSize: 12, fontWeight: '800', marginLeft: 4 }}>{streak}d</Text>
                 </View>
               )}
+              <TouchableOpacity
+                onPress={() => navigation.navigate('Notifications')}
+                style={[s.bellBtn, { backgroundColor: g.glass, borderColor: g.border }]}
+                accessibilityLabel="Notifications"
+              >
+                <Text style={{ fontSize: 16 }}>🔔</Text>
+                {unreadCount > 0 && (
+                  <View style={[s.bellDot, { backgroundColor: g.coral || '#e5534b' }]}>
+                    <Text style={s.bellDotText}>{unreadCount > 9 ? '9+' : String(unreadCount)}</Text>
+                  </View>
+                )}
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleLogout}
                 style={[s.avatarCircle, { backgroundColor: g.accentSoft, borderColor: g.borderGlow }]}
@@ -566,6 +581,18 @@ const s = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
     borderWidth: 1.5,
   },
+  bellBtn: {
+    width: 38, height: 38, borderRadius: 19,
+    justifyContent: 'center', alignItems: 'center',
+    borderWidth: 1,
+  },
+  bellDot: {
+    position: 'absolute', top: -4, right: -4,
+    minWidth: 18, height: 18, borderRadius: 9,
+    paddingHorizontal: 4,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  bellDotText: { color: '#fff', fontSize: 10, fontWeight: '900' },
 
   statusCard: {
     borderRadius: 22, padding: 20, marginBottom: 16,
