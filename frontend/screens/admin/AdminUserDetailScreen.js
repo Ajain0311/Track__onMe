@@ -8,6 +8,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import useThemeStore from '../../store/themeStore';
 import { adminGetUserAttendance, getApiErrorMessage } from '../../services/api';
+import { downloadCSV } from '../../utils/csvExport';
+import { useToast } from '../../components/ToastProvider';
 
 const fmtTime = (iso) => iso ? new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—';
 const fmtDate = (dateStr) => {
@@ -36,10 +38,44 @@ const groupByDate = (records) => {
 export default function AdminUserDetailScreen({ route, navigation }) {
   const { userId, email } = route.params;
   const { colors: g, gradients: grad } = useThemeStore();
+  const toast = useToast();
   const [records, setRecords] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    if (!records.length) { toast.info('No records to export'); return; }
+    setExporting(true);
+    const filename = `attendance-${(email || userId).replace(/[^a-z0-9]/gi, '_')}-${new Date().toISOString().slice(0,10)}.csv`;
+    const result = await downloadCSV(
+      records.map((r) => ({
+        date:         r.date || '',
+        checkIn:      r.checkInTime  ? new Date(r.checkInTime).toISOString()  : '',
+        checkOut:     r.checkOutTime ? new Date(r.checkOutTime).toISOString() : '',
+        durationMin:  r.totalDuration ?? '',
+        location:     r.locationName || '',
+        method:       r.checkInMethod || '',
+        latitude:     r.latitude ?? '',
+        longitude:    r.longitude ?? '',
+      })),
+      [
+        { key: 'date',        label: 'Date' },
+        { key: 'checkIn',     label: 'Check-in (ISO)' },
+        { key: 'checkOut',    label: 'Check-out (ISO)' },
+        { key: 'durationMin', label: 'Duration (min)' },
+        { key: 'location',    label: 'Location' },
+        { key: 'method',      label: 'Method' },
+        { key: 'latitude',    label: 'Latitude' },
+        { key: 'longitude',   label: 'Longitude' },
+      ],
+      filename,
+    );
+    setExporting(false);
+    if (result.success) toast.success(`Exported ${records.length} records`);
+    else toast.error(result.error || 'Export failed');
+  };
 
   const load = useCallback(async () => {
     setError(null);
@@ -91,9 +127,20 @@ export default function AdminUserDetailScreen({ route, navigation }) {
     <LinearGradient colors={grad.screen} style={st.fill}>
       {/* Header */}
       <View style={st.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn}>
-          <Text style={{ color: g.accent, fontSize: 16 }}>‹ Back</Text>
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn}>
+            <Text style={{ color: g.accent, fontSize: 16 }}>‹ Back</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={handleExport}
+            disabled={exporting || loading || !records.length}
+            style={[st.exportBtn, { borderColor: g.border, opacity: !records.length ? 0.5 : 1 }]}
+          >
+            {exporting
+              ? <ActivityIndicator size="small" color={g.accent} />
+              : <Text style={{ color: g.accent, fontSize: 12, fontWeight: '800' }}>⬇ CSV</Text>}
+          </TouchableOpacity>
+        </View>
         <View style={[st.avatarCircle, { backgroundColor: g.accentSoft, borderColor: g.borderGlow }]}>
           <Text style={{ color: g.accent, fontSize: 22, fontWeight: '900' }}>
             {email?.charAt(0).toUpperCase()}
@@ -169,4 +216,8 @@ const st = StyleSheet.create({
   sessionLocation: { fontSize: 12, marginTop: 3 },
   sessionMeta: { fontSize: 11, marginTop: 2 },
   durBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, alignItems: 'center' },
+  exportBtn: {
+    paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 10, borderWidth: 1, marginBottom: 16,
+  },
 });

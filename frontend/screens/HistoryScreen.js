@@ -6,9 +6,11 @@ import {
   TextInput, TouchableOpacity, Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getAttendanceDaily, getApiErrorMessage } from '../services/api';
+import { getAttendanceDaily, getAttendance, getApiErrorMessage } from '../services/api';
 import DailySummaryCard from '../components/DailySummaryCard';
 import useThemeStore from '../store/themeStore';
+import { downloadCSV } from '../utils/csvExport';
+import { useToast } from '../components/ToastProvider';
 
 const formatHM = (totalMinutes) => {
   const m = Math.max(0, Math.round(totalMinutes || 0));
@@ -29,6 +31,43 @@ export default function HistoryScreen() {
   const headerFade = useRef(new Animated.Value(0)).current;
 
   const { colors: g, gradients: grad } = useThemeStore();
+  const toast = useToast();
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      const res = await getAttendance();
+      const records = res.data.records || [];
+      if (!records.length) { toast.info('No records to export'); return; }
+      const filename = `attendance-${new Date().toISOString().slice(0,10)}.csv`;
+      const result = await downloadCSV(
+        records.map((r) => ({
+          date:        r.date || '',
+          checkIn:     r.checkInTime  ? new Date(r.checkInTime).toISOString()  : '',
+          checkOut:    r.checkOutTime ? new Date(r.checkOutTime).toISOString() : '',
+          durationMin: r.totalDuration ?? '',
+          location:    r.locationName || '',
+          method:      r.checkInMethod || '',
+        })),
+        [
+          { key: 'date',        label: 'Date' },
+          { key: 'checkIn',     label: 'Check-in' },
+          { key: 'checkOut',    label: 'Check-out' },
+          { key: 'durationMin', label: 'Duration (min)' },
+          { key: 'location',    label: 'Location' },
+          { key: 'method',      label: 'Method' },
+        ],
+        filename,
+      );
+      if (result.success) toast.success(`Exported ${records.length} sessions`);
+      else toast.error(result.error || 'Export failed');
+    } catch (err) {
+      toast.error(getApiErrorMessage(err));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const fetchDays = useCallback(async () => {
     setError(null);
@@ -109,12 +148,24 @@ export default function HistoryScreen() {
               {days.length} day{days.length !== 1 ? 's' : ''} recorded
             </Text>
           </View>
-          <TouchableOpacity
-            style={[ss.searchToggle, { backgroundColor: showSearch ? g.accentSoft : g.glass, borderColor: showSearch ? g.accent : g.border }]}
-            onPress={toggleSearch}
-          >
-            <Text style={{ fontSize: 16 }}>{showSearch ? '✕' : '🔍'}</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity
+              style={[ss.searchToggle, { backgroundColor: g.glass, borderColor: g.border, opacity: days.length === 0 ? 0.5 : 1 }]}
+              onPress={handleExport}
+              disabled={exporting || days.length === 0}
+              accessibilityLabel="Export CSV"
+            >
+              {exporting
+                ? <ActivityIndicator size="small" color={g.accent} />
+                : <Text style={{ fontSize: 14 }}>⬇</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[ss.searchToggle, { backgroundColor: showSearch ? g.accentSoft : g.glass, borderColor: showSearch ? g.accent : g.border }]}
+              onPress={toggleSearch}
+            >
+              <Text style={{ fontSize: 16 }}>{showSearch ? '✕' : '🔍'}</Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Search bar (animated) */}
