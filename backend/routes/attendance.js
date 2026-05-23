@@ -3,29 +3,35 @@
 const express = require('express');
 const router = express.Router();
 const { verifyToken } = require('../middleware/auth');
+const { validate, UUID_RE } = require('../middleware/validate');
+const rateLimit = require('../middleware/rateLimit');
+const asyncHandler = require('../utils/asyncHandler');
 const { getUserRole } = require('../services/adminService');
 const {
-  checkIn,
-  checkOut,
-  getAttendanceDaily,
-  getAttendance,
-  getStatus,
+  checkIn, checkOut, getAttendanceDaily, getAttendance, getStatus,
 } = require('../controllers/attendanceController');
 
-router.post('/checkin', verifyToken, checkIn);
-router.post('/checkout', verifyToken, checkOut);
-router.get('/attendance/daily', verifyToken, getAttendanceDaily);
-router.get('/attendance', verifyToken, getAttendance);
-router.get('/status', verifyToken, getStatus);
+const checkInSchema = {
+  latitude:     { type: 'number', min: -90,  max: 90  },
+  longitude:    { type: 'number', min: -180, max: 180 },
+  accuracy:     { type: 'number', min: 0 },
+  locationId:   { type: 'uuid' },
+  locationName: { type: 'string', max: 200 },
+};
 
-// GET /api/me — returns user identity + role (used by frontend to show admin tab)
-router.get('/me', verifyToken, async (req, res, next) => {
-  try {
-    const role = await getUserRole(req.user.id);
-    return res.status(200).json({ id: req.user.id, email: req.user.email, role });
-  } catch (err) {
-    next(err);
-  }
-});
+// Limit check-in/out attempts to 20/min/user to prevent abuse / accidental floods
+const attendanceLimiter = rateLimit({ windowMs: 60_000, max: 20, key: (req) => req.user?.id || req.ip });
+
+router.post('/checkin',  verifyToken, attendanceLimiter, validate({ body: checkInSchema }), checkIn);
+router.post('/checkout', verifyToken, attendanceLimiter, checkOut);
+router.get('/attendance/daily', verifyToken, getAttendanceDaily);
+router.get('/attendance',       verifyToken, getAttendance);
+router.get('/status',           verifyToken, getStatus);
+
+// GET /api/me — identity + role
+router.get('/me', verifyToken, asyncHandler(async (req, res) => {
+  const role = await getUserRole(req.user.id);
+  res.json({ id: req.user.id, email: req.user.email, role });
+}));
 
 module.exports = router;

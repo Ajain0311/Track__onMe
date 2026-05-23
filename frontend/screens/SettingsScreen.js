@@ -311,6 +311,26 @@ export default function SettingsScreen({ navigation }) {
           </LinearGradient>
         </View>
 
+        {/* Inbox & Activity */}
+        <View style={st.section}>
+          <Text style={[st.sectionTitle, { color: g.textMuted }]}>INBOX</Text>
+          <LinearGradient colors={grad.card} style={[st.sectionCard, { borderColor: g.border }]}>
+            <SettingRow
+              icon="🔔"
+              title="Notifications"
+              subtitle="Approvals, alerts and system messages"
+              onPress={() => navigation.navigate('Notifications')}
+            />
+            <View style={[st.divider, { backgroundColor: g.border }]} />
+            <SettingRow
+              icon="📋"
+              title="My Activity"
+              subtitle="Timeline of your recent actions"
+              onPress={() => navigation.navigate('Activity')}
+            />
+          </LinearGradient>
+        </View>
+
         {/* Account / admin access */}
         {!isAdmin && (
           <View style={st.section}>

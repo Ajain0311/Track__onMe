@@ -1,105 +1,79 @@
 // controllers/locationController.js
 
+const asyncHandler = require('../utils/asyncHandler');
+const AppError = require('../utils/AppError');
 const {
-  getAllLocations,
-  getActiveLocations,
-  getLocationById,
-  createLocation,
-  updateLocation,
-  deleteLocation,
+  getAllLocations, getActiveLocations, getLocationById,
+  createLocation,  updateLocation,     deleteLocation,
 } = require('../services/locationService');
-
-// ─── User-facing ──────────────────────────────────────────────────────────────
-
 const { getLocationsForUser } = require('../services/locationRequestService');
+const audit = require('../services/auditService');
+const logger = require('../utils/logger');
 
-// GET /api/locations — active global + user-specific locations for the location picker
-const listActive = async (req, res, next) => {
+// ─── User-facing ──────────────────────────────────────────────────────────
+
+// GET /api/locations
+const listActive = asyncHandler(async (req, res) => {
+  let locations;
   try {
-    let locations;
-    try {
-      // Try user-aware query (requires 002 migration to be applied)
-      locations = await getLocationsForUser(req.user.id);
-    } catch {
-      // Fallback to global-only if new tables don't exist yet
-      locations = await getActiveLocations();
-    }
-    return res.status(200).json({ locations });
+    locations = await getLocationsForUser(req.user.id);
   } catch (err) {
-    next(err);
+    // Pre-migration fallback — log once and continue with global-only
+    logger.warn('getLocationsForUser failed, falling back to active list', { error: err.message });
+    locations = await getActiveLocations();
   }
-};
+  res.json({ locations });
+});
 
-// ─── Admin-facing ─────────────────────────────────────────────────────────────
+// ─── Admin-facing ─────────────────────────────────────────────────────────
 
-// GET /api/admin/locations
-const listAll = async (req, res, next) => {
-  try {
-    const locations = await getAllLocations();
-    return res.status(200).json({ locations });
-  } catch (err) {
-    next(err);
-  }
-};
+const listAll = asyncHandler(async (_req, res) => {
+  const locations = await getAllLocations();
+  res.json({ locations });
+});
 
-// GET /api/admin/locations/:id
-const getOne = async (req, res, next) => {
-  try {
-    const location = await getLocationById(req.params.id);
-    return res.status(200).json({ location });
-  } catch (err) {
-    next(err);
-  }
-};
+const getOne = asyncHandler(async (req, res) => {
+  const location = await getLocationById(req.params.id);
+  if (!location) throw AppError.notFound('Location not found.');
+  res.json({ location });
+});
 
-// POST /api/admin/locations
-const create = async (req, res, next) => {
-  try {
-    const { name, address, latitude, longitude, radiusMeters, wifiSsids, isActive } = req.body;
-    if (!name || latitude == null || longitude == null) {
-      return res.status(400).json({ error: 'name, latitude, and longitude are required.' });
-    }
-    const location = await createLocation(
-      { name, address, latitude, longitude, radiusMeters, wifiSsids, isActive },
-      req.user.id
-    );
-    console.log(`[Locations] Created "${location.name}" by ${req.user.email}`);
-    return res.status(201).json({ location });
-  } catch (err) {
-    next(err);
-  }
-};
+const create = asyncHandler(async (req, res) => {
+  const location = await createLocation(req.body, req.user.id);
+  await audit.record({
+    actor: req.user, action: 'location.create', resource: 'locations',
+    resourceId: location.id, metadata: { name: location.name }, req,
+  });
+  res.status(201).json({ location });
+});
 
-// PUT /api/admin/locations/:id
-const update = async (req, res, next) => {
-  try {
-    const location = await updateLocation(req.params.id, req.body);
-    console.log(`[Locations] Updated "${location.name}" by ${req.user.email}`);
-    return res.status(200).json({ location });
-  } catch (err) {
-    next(err);
-  }
-};
+const update = asyncHandler(async (req, res) => {
+  const location = await updateLocation(req.params.id, req.body);
+  await audit.record({
+    actor: req.user, action: 'location.update', resource: 'locations',
+    resourceId: location.id, metadata: { patch: req.body }, req,
+  });
+  res.json({ location });
+});
 
-// PATCH /api/admin/locations/:id/toggle
-const toggleActive = async (req, res, next) => {
-  try {
-    const existing = await getLocationById(req.params.id);
-    const location = await updateLocation(req.params.id, { isActive: !existing.isActive });
-    return res.status(200).json({ location });
-  } catch (err) {
-    next(err);
-  }
-};
+const toggleActive = asyncHandler(async (req, res) => {
+  const existing = await getLocationById(req.params.id);
+  if (!existing) throw AppError.notFound('Location not found.');
+  const location = await updateLocation(req.params.id, { isActive: !existing.isActive });
+  await audit.record({
+    actor: req.user, action: 'location.toggle', resource: 'locations',
+    resourceId: location.id, metadata: { isActive: location.isActive }, req,
+  });
+  res.json({ location });
+});
 
-// DELETE /api/admin/locations/:id
-const remove = async (req, res, next) => {
-  try {
-    await deleteLocation(req.params.id);
-    return res.status(200).json({ message: 'Location deleted.' });
-  } catch (err) {
-    next(err);
-  }
-};
+const remove = asyncHandler(async (req, res) => {
+  await deleteLocation(req.params.id);
+  await audit.record({
+    actor: req.user, action: 'location.delete', resource: 'locations',
+    resourceId: req.params.id, req,
+  });
+  res.json({ message: 'Location deleted.' });
+});
 
 module.exports = { listActive, listAll, getOne, create, update, toggleActive, remove };

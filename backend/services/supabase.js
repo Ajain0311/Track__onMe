@@ -4,8 +4,9 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const ws = require('ws');
+const logger = require('../utils/logger');
 
-const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseUrl        = process.env.SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabaseServiceKey) {
@@ -14,17 +15,11 @@ if (!supabaseUrl || !supabaseServiceKey) {
   );
 }
 
-// Pass ws explicitly for Node.js < 22 which lacks a native WebSocket global
 const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false,
-  },
-  realtime: {
-    transport: ws,
-  },
+  auth:     { autoRefreshToken: false, persistSession: false },
+  realtime: { transport: ws },
 });
 
-console.log('[Supabase] Admin client initialized.');
+logger.info('Supabase admin client initialized');
 
 module.exports = { supabase };

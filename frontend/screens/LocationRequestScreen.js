@@ -10,7 +10,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import useThemeStore from '../store/themeStore';
 import { submitLocationRequest, getApiErrorMessage } from '../services/api';
-import { getCurrentLocation } from '../services/locationService';
+import { getCurrentLocation, reverseGeocode } from '../services/locationService';
 import Toast from '../components/Toast';
 
 export default function LocationRequestScreen({ navigation }) {
@@ -20,6 +20,8 @@ export default function LocationRequestScreen({ navigation }) {
     address: '',
     latitude: '',
     longitude: '',
+    accuracy: null,
+    capturedAt: null,
     radiusMeters: '200',
     notes: '',
     wifiSsids: [],
@@ -27,23 +29,40 @@ export default function LocationRequestScreen({ navigation }) {
   const [wifiInput, setWifiInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
 
   const showToast = (message, type = 'success') =>
     setToast({ visible: true, message, type });
 
   const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+  const setMany = (patch) => setForm((f) => ({ ...f, ...patch }));
 
   const useCurrentLocation = async () => {
     setGpsLoading(true);
     try {
       const result = await getCurrentLocation();
-      if (result.success) {
-        set('latitude', String(result.latitude.toFixed(7)));
-        set('longitude', String(result.longitude.toFixed(7)));
-        showToast('GPS coordinates filled in', 'success');
-      } else {
-        showToast('Could not get GPS: ' + result.error, 'error');
+      if (!result.success) {
+        showToast(result.error || 'Could not read GPS', 'error');
+        return;
+      }
+      setMany({
+        latitude:   String(result.latitude.toFixed(7)),
+        longitude:  String(result.longitude.toFixed(7)),
+        accuracy:   result.accuracy ?? null,
+        capturedAt: result.timestamp ? new Date(result.timestamp).toISOString() : new Date().toISOString(),
+      });
+      showToast(`GPS fixed (±${Math.round(result.accuracy || 0)}m)`, 'success');
+
+      // Best-effort reverse geocode (only fills empty address)
+      setGeocoding(true);
+      try {
+        const addr = await reverseGeocode(result.latitude, result.longitude);
+        if (addr) {
+          setForm((f) => (f.address ? f : { ...f, address: addr }));
+        }
+      } finally {
+        setGeocoding(false);
       }
     } catch (e) {
       showToast('GPS error: ' + e.message, 'error');
@@ -86,9 +105,11 @@ export default function LocationRequestScreen({ navigation }) {
         address:       form.address.trim(),
         latitude:      parseFloat(form.latitude),
         longitude:     parseFloat(form.longitude),
-        radiusMeters:  parseInt(form.radiusMeters),
+        accuracy:      form.accuracy ?? undefined,
+        capturedAt:    form.capturedAt || undefined,
+        radiusMeters:  parseInt(form.radiusMeters, 10),
         wifiSsids:     form.wifiSsids,
-        notes:         form.notes.trim() || null,
+        notes:         form.notes.trim() || undefined,
       });
       showToast('Request submitted! Admin will review it.', 'success');
       setTimeout(() => navigation.goBack(), 1800);
@@ -171,6 +192,23 @@ export default function LocationRequestScreen({ navigation }) {
               onChangeText={(v) => set('longitude', v)}
             />
           </View>
+          {(form.accuracy != null || form.capturedAt) && (
+            <View style={[st.gpsMetaRow, { backgroundColor: g.glass, borderColor: g.border }]}>
+              {form.accuracy != null && (
+                <Text style={{ color: g.textMuted, fontSize: 11, fontWeight: '600' }}>
+                  Accuracy: ±{Math.round(form.accuracy)}m
+                </Text>
+              )}
+              {form.capturedAt && (
+                <Text style={{ color: g.textMuted, fontSize: 11, fontWeight: '600' }}>
+                  Captured: {new Date(form.capturedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </Text>
+              )}
+              {geocoding && (
+                <Text style={{ color: g.accent, fontSize: 11, fontWeight: '700' }}>resolving address…</Text>
+              )}
+            </View>
+          )}
 
           {/* Radius */}
           <Text style={[labelStyle, { marginTop: 14 }]}>CHECK-IN RADIUS (METERS)</Text>
@@ -266,6 +304,11 @@ const st = StyleSheet.create({
   gpsBtn: {
     paddingHorizontal: 10, paddingVertical: 5,
     borderRadius: 8, borderWidth: 1,
+  },
+  gpsMetaRow: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 14,
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: 10, borderWidth: 1, marginTop: 8,
   },
   addBtn: {
     width: 46, borderRadius: 12,

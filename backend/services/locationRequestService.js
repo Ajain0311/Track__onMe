@@ -52,21 +52,33 @@ const getUserRequest = async (id, userId) => {
 
 /** Submit a new location request. */
 const createRequest = async (userId, payload) => {
-  const { data, error } = await supabase
-    .from('location_requests')
-    .insert({
-      user_id:       userId,
-      name:          payload.name,
-      address:       payload.address || '',
-      latitude:      payload.latitude,
-      longitude:     payload.longitude,
-      radius_meters: payload.radiusMeters || 200,
-      wifi_ssids:    payload.wifiSsids   || [],
-      notes:         payload.notes       || null,
-      status:        'pending',
-    })
-    .select()
-    .single();
+  // Use only the columns guaranteed to exist; gracefully add new ones if the
+  // 003 migration has been applied (accuracy / captured_at / address are post-003)
+  const row = {
+    user_id:       userId,
+    name:          payload.name,
+    address:       payload.address || '',
+    latitude:      payload.latitude,
+    longitude:     payload.longitude,
+    radius_meters: payload.radiusMeters || 200,
+    wifi_ssids:    payload.wifiSsids   || [],
+    notes:         payload.notes       || null,
+    status:        'pending',
+  };
+  if (payload.accuracy   != null) row.accuracy    = payload.accuracy;
+  if (payload.capturedAt)         row.captured_at = payload.capturedAt;
+
+  let { data, error } = await supabase
+    .from('location_requests').insert(row).select().single();
+
+  // If new columns aren't present yet (pre-003 schema), retry without them
+  if (error && /column .* does not exist/i.test(error.message)) {
+    delete row.accuracy;
+    delete row.captured_at;
+    ({ data, error } = await supabase
+      .from('location_requests').insert(row).select().single());
+  }
+
   if (error) throw new Error(error.message);
   return mapRequest(data);
 };

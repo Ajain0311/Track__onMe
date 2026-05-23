@@ -155,6 +155,22 @@ export default function AdminDashboardScreen({ navigation }) {
               </View>
             </TouchableOpacity>
 
+            {/* Audit Logs action */}
+            <TouchableOpacity
+              style={[st.requestsCard, { backgroundColor: g.glass, borderColor: g.border }]}
+              onPress={() => navigation.navigate('AdminAuditLogs')}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text style={{ fontSize: 28 }}>📜</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[st.actionLabel, { color: g.text }]}>Audit Logs</Text>
+                  <Text style={[st.actionSub, { color: g.textMuted }]}>Sensitive admin action trail</Text>
+                </View>
+                <Text style={{ color: g.textDim, fontSize: 20 }}>›</Text>
+              </View>
+            </TouchableOpacity>
+
             {/* Info card */}
             <LinearGradient colors={grad.card} style={[st.infoCard, { borderColor: g.border }]}>
               <Text style={[st.infoTitle, { color: g.text }]}>About Admin Mode</Text>

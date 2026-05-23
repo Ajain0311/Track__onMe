@@ -90,6 +90,23 @@ export const getMyLocationRequests = () => api.get('/location-requests');
 export const submitLocationRequest = (payload) => api.post('/location-requests', payload);
 export const cancelLocationRequest = (id) => api.delete(`/location-requests/${id}`);
 
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+export const getNotifications = (unreadOnly = false) =>
+  api.get('/notifications', { params: { unread: unreadOnly ? 1 : undefined } });
+export const markNotificationRead = (id) => api.patch(`/notifications/${id}/read`);
+export const markAllNotificationsRead = () => api.patch('/notifications/read-all');
+
+// ─── Activity ─────────────────────────────────────────────────────────────────
+
+export const getMyActivity = (limit = 50) =>
+  api.get('/activity', { params: { limit } });
+
+// ─── Audit logs (admin) ───────────────────────────────────────────────────────
+
+export const adminGetAuditLogs = (params = {}) =>
+  api.get('/admin/audit-logs', { params });
+
 // ─── Location Requests (admin) ────────────────────────────────────────────────
 
 export const adminGetLocationRequests = (status = 'pending') =>

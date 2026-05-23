@@ -1,119 +1,75 @@
 // controllers/attendanceController.js
-// Business logic for all attendance routes.
 
+const asyncHandler = require('../utils/asyncHandler');
+const AppError = require('../utils/AppError');
 const {
-  createCheckIn,
-  getActiveSession,
-  updateCheckOut,
-  getUserAttendance,
-  buildDailySummaries,
+  createCheckIn, getActiveSession, updateCheckOut,
+  getUserAttendance, buildDailySummaries,
 } = require('../services/attendanceService');
+const activity = require('../services/activityService');
 
-/**
- * POST /checkin
- * Creates a new check-in record if user has no active session.
- */
-const checkIn = async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const { latitude, longitude, accuracy, locationId, locationName } = req.body || {};
+// POST /api/checkin
+const checkIn = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const { latitude, longitude, accuracy, locationId, locationName } = req.body || {};
 
-    const activeSession = await getActiveSession(userId);
-    if (activeSession) {
-      return res.status(400).json({
-        error: 'Already checked in. Please check out before checking in again.',
-      });
-    }
+  const active = await getActiveSession(userId);
+  if (active) throw AppError.badRequest('Already checked in. Please check out before checking in again.');
 
-    const location =
-      latitude != null && longitude != null
-        ? {
-            latitude: parseFloat(latitude),
-            longitude: parseFloat(longitude),
-            accuracy: accuracy ? parseFloat(accuracy) : null,
-            locationId: locationId || null,
-            locationName: locationName || null,
-          }
-        : (locationId ? { locationId, locationName: locationName || null } : null);
+  const location = (latitude != null && longitude != null)
+    ? {
+        latitude:     parseFloat(latitude),
+        longitude:    parseFloat(longitude),
+        accuracy:     accuracy != null ? parseFloat(accuracy) : null,
+        locationId:   locationId   || null,
+        locationName: locationName || null,
+      }
+    : (locationId ? { locationId, locationName: locationName || null } : null);
 
-    const record = await createCheckIn(userId, location);
-    console.log(`[CheckIn] User ${userId} via ${record.checkInMethod} at ${record.checkInTime}`);
+  const record = await createCheckIn(userId, location);
 
-    return res.status(201).json({ message: 'Checked in successfully.', record });
-  } catch (error) {
-    next(error);
-  }
-};
+  await activity.record({
+    userId, type: 'check_in', title: 'Checked in',
+    description: record.locationName || 'GPS / WiFi',
+    metadata: { attendanceId: record.id, method: record.checkInMethod },
+  });
 
-/**
- * POST /checkout
- * Closes the latest active session for the user.
- */
-const checkOut = async (req, res, next) => {
-  try {
-    const userId = req.user.id;
+  res.status(201).json({ message: 'Checked in successfully.', record });
+});
 
-    const activeSession = await getActiveSession(userId);
-    if (!activeSession) {
-      return res.status(400).json({
-        error: 'No active session found. Please check in first.',
-      });
-    }
+// POST /api/checkout
+const checkOut = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const active = await getActiveSession(userId);
+  if (!active) throw AppError.badRequest('No active session found. Please check in first.');
 
-    const record = await updateCheckOut(activeSession.id, activeSession.checkInTime);
-    console.log(`[CheckOut] User ${userId} checked out. Duration: ${record.totalDuration} min`);
+  const record = await updateCheckOut(active.id, active.checkInTime);
 
-    return res.status(200).json({ message: 'Checked out successfully.', record });
-  } catch (error) {
-    next(error);
-  }
-};
+  await activity.record({
+    userId, type: 'check_out', title: 'Checked out',
+    description: `${record.totalDuration ?? 0} min session`,
+    metadata: { attendanceId: record.id, durationMinutes: record.totalDuration },
+  });
 
-/**
- * GET /attendance/daily
- * Per-day totals (minutes + session count); sessions nested for detail.
- */
-const getAttendanceDaily = async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const records = await getUserAttendance(userId);
-    const days = buildDailySummaries(records);
-    return res.status(200).json({ days });
-  } catch (error) {
-    next(error);
-  }
-};
+  res.json({ message: 'Checked out successfully.', record });
+});
 
-/**
- * GET /attendance
- * Returns all attendance records for the logged-in user.
- */
-const getAttendance = async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const records = await getUserAttendance(userId);
-    return res.status(200).json({ records });
-  } catch (error) {
-    next(error);
-  }
-};
+// GET /api/attendance/daily
+const getAttendanceDaily = asyncHandler(async (req, res) => {
+  const records = await getUserAttendance(req.user.id);
+  res.json({ days: buildDailySummaries(records) });
+});
 
-/**
- * GET /status
- * Returns whether the user currently has an active check-in session.
- */
-const getStatus = async (req, res, next) => {
-  try {
-    const userId = req.user.id;
-    const activeSession = await getActiveSession(userId);
+// GET /api/attendance
+const getAttendance = asyncHandler(async (req, res) => {
+  const records = await getUserAttendance(req.user.id);
+  res.json({ records });
+});
 
-    return res.status(200).json({
-      isCheckedIn: !!activeSession,
-      activeSession: activeSession || null,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
+// GET /api/status
+const getStatus = asyncHandler(async (req, res) => {
+  const active = await getActiveSession(req.user.id);
+  res.json({ isCheckedIn: !!active, activeSession: active || null });
+});
 
 module.exports = { checkIn, checkOut, getAttendanceDaily, getAttendance, getStatus };

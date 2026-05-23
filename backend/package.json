@@ -5,13 +5,16 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "dev": "nodemon index.js"
+    "dev": "nodemon index.js",
+    "migrate": "node scripts/apply-migrations.js",
+    "make-admin": "node scripts/make-admin.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.43.5",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "pg": "^8.13.0",
     "ws": "^8.20.1"
   },
   "devDependencies": {

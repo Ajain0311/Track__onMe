@@ -28,8 +28,12 @@ import AdminUserDetailScreen from './screens/admin/AdminUserDetailScreen';
 import AdminLocationsScreen from './screens/admin/AdminLocationsScreen';
 import AdminLocationFormScreen from './screens/admin/AdminLocationFormScreen';
 import AdminLocationRequestsScreen from './screens/admin/AdminLocationRequestsScreen';
+import AdminAuditLogsScreen from './screens/admin/AdminAuditLogsScreen';
 import LocationRequestScreen from './screens/LocationRequestScreen';
 import MyLocationRequestsScreen from './screens/MyLocationRequestsScreen';
+import NotificationsScreen from './screens/NotificationsScreen';
+import ActivityScreen from './screens/ActivityScreen';
+import { ToastProvider } from './components/ToastProvider';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -190,33 +194,38 @@ export default function App() {
 
   return (
     <SafeAreaProvider>
-      <NavigationContainer>
-        <Stack.Navigator
-          screenOptions={{
-            headerShown: false,
-            animation: 'fade',
-            contentStyle: { backgroundColor: g.bg0 },
-          }}
-        >
-          {user ? (
-            <>
-              <Stack.Screen name="Main" component={MainTabs} />
-              <Stack.Screen name="FaceRegistration" component={FaceRegistrationScreen} options={{ animation: 'slide_from_bottom' }} />
-              <Stack.Screen name="FaceVerification" component={FaceVerificationScreen} options={{ animation: 'slide_from_bottom' }} />
-              <Stack.Screen name="LocationPicker" component={LocationPickerScreen} options={{ animation: 'slide_from_bottom' }} />
-              <Stack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ animation: 'slide_from_right' }} />
-              <Stack.Screen name="AdminUserDetail" component={AdminUserDetailScreen} options={{ animation: 'slide_from_right' }} />
-              <Stack.Screen name="AdminLocations" component={AdminLocationsScreen} options={{ animation: 'slide_from_right' }} />
-              <Stack.Screen name="AdminLocationForm" component={AdminLocationFormScreen} options={{ animation: 'slide_from_right' }} />
-              <Stack.Screen name="AdminLocationRequests" component={AdminLocationRequestsScreen} options={{ animation: 'slide_from_right' }} />
-              <Stack.Screen name="LocationRequest" component={LocationRequestScreen} options={{ animation: 'slide_from_bottom' }} />
-              <Stack.Screen name="MyLocationRequests" component={MyLocationRequestsScreen} options={{ animation: 'slide_from_right' }} />
-            </>
-          ) : (
-            <Stack.Screen name="Login" component={LoginScreen} />
-          )}
-        </Stack.Navigator>
-      </NavigationContainer>
+      <ToastProvider>
+        <NavigationContainer>
+          <Stack.Navigator
+            screenOptions={{
+              headerShown: false,
+              animation: 'fade',
+              contentStyle: { backgroundColor: g.bg0 },
+            }}
+          >
+            {user ? (
+              <>
+                <Stack.Screen name="Main" component={MainTabs} />
+                <Stack.Screen name="FaceRegistration" component={FaceRegistrationScreen} options={{ animation: 'slide_from_bottom' }} />
+                <Stack.Screen name="FaceVerification" component={FaceVerificationScreen} options={{ animation: 'slide_from_bottom' }} />
+                <Stack.Screen name="LocationPicker" component={LocationPickerScreen} options={{ animation: 'slide_from_bottom' }} />
+                <Stack.Screen name="AdminUsers" component={AdminUsersScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AdminUserDetail" component={AdminUserDetailScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AdminLocations" component={AdminLocationsScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AdminLocationForm" component={AdminLocationFormScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AdminLocationRequests" component={AdminLocationRequestsScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AdminAuditLogs" component={AdminAuditLogsScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="LocationRequest" component={LocationRequestScreen} options={{ animation: 'slide_from_bottom' }} />
+                <Stack.Screen name="MyLocationRequests" component={MyLocationRequestsScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="Activity" component={ActivityScreen} options={{ animation: 'slide_from_right' }} />
+              </>
+            ) : (
+              <Stack.Screen name="Login" component={LoginScreen} />
+            )}
+          </Stack.Navigator>
+        </NavigationContainer>
+      </ToastProvider>
     </SafeAreaProvider>
   );
 }
