@@ -12,6 +12,7 @@ import useThemeStore from '../store/themeStore';
 import { submitLocationRequest, getApiErrorMessage } from '../services/api';
 import { getCurrentLocation, reverseGeocode } from '../services/locationService';
 import Toast from '../components/Toast';
+import MapPreview from '../components/MapPreview';
 
 export default function LocationRequestScreen({ navigation }) {
   const { colors: g, gradients: grad } = useThemeStore();
@@ -207,6 +208,18 @@ export default function LocationRequestScreen({ navigation }) {
               {geocoding && (
                 <Text style={{ color: g.accent, fontSize: 11, fontWeight: '700' }}>resolving address…</Text>
               )}
+            </View>
+          )}
+
+          {/* Map preview */}
+          {form.latitude && form.longitude && !isNaN(parseFloat(form.latitude)) && !isNaN(parseFloat(form.longitude)) && (
+            <View style={{ marginTop: 12, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: g.border }}>
+              <MapPreview
+                latitude={parseFloat(form.latitude)}
+                longitude={parseFloat(form.longitude)}
+                radius={parseInt(form.radiusMeters, 10) || 200}
+                height={200}
+              />
             </View>
           )}
 
