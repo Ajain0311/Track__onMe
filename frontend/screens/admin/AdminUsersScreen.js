@@ -16,6 +16,13 @@ const fmtMinutes = (m) => {
 
 const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric' }) : 'Never';
 
+const FILTERS = [
+  { key: 'all',     label: 'All',       match: () => true },
+  { key: 'active',  label: 'Active now', match: (u) => u.isActiveNow },
+  { key: 'today',   label: 'Today',      match: (u) => u.checkedInToday },
+  { key: 'admin',   label: 'Admins',     match: (u) => u.role === 'admin' || u.role === 'manager' || u.role === 'super_admin' },
+];
+
 export default function AdminUsersScreen({ navigation }) {
   const { colors: g, gradients: grad } = useThemeStore();
   const [users, setUsers] = useState([]);
@@ -24,13 +31,13 @@ export default function AdminUsersScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
+  const [filter, setFilter] = useState('all');
 
   const load = useCallback(async () => {
     setError(null);
     try {
       const res = await adminGetUsers();
       setUsers(res.data.users || []);
-      setFiltered(res.data.users || []);
     } catch (err) {
       setError(getApiErrorMessage(err));
     } finally {
@@ -42,10 +49,15 @@ export default function AdminUsersScreen({ navigation }) {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (!search.trim()) { setFiltered(users); return; }
-    const q = search.toLowerCase();
-    setFiltered(users.filter((u) => u.email?.toLowerCase().includes(q)));
-  }, [search, users]);
+    const fn = FILTERS.find((f) => f.key === filter)?.match || (() => true);
+    const q = search.trim().toLowerCase();
+    setFiltered(users.filter((u) => fn(u) && (!q || u.email?.toLowerCase().includes(q))));
+  }, [search, users, filter]);
+
+  const filterCount = (key) => {
+    const fn = FILTERS.find((f) => f.key === key)?.match || (() => true);
+    return users.filter(fn).length;
+  };
 
   const handleRoleToggle = (user) => {
     const newRole = user.role === 'admin' ? 'user' : 'admin';
@@ -129,6 +141,30 @@ export default function AdminUsersScreen({ navigation }) {
           onChangeText={setSearch}
           autoCorrect={false}
         />
+        {/* Filter chips */}
+        <View style={st.filterRow}>
+          {FILTERS.map((f) => {
+            const active = filter === f.key;
+            const count = filterCount(f.key);
+            return (
+              <TouchableOpacity
+                key={f.key}
+                onPress={() => setFilter(f.key)}
+                style={[st.chip, {
+                  backgroundColor: active ? g.accent : g.glass,
+                  borderColor:     active ? g.accent : g.border,
+                }]}
+              >
+                <Text style={{
+                  color: active ? '#fff' : g.textMuted,
+                  fontSize: 12, fontWeight: '700',
+                }}>
+                  {f.label} {count > 0 && <Text style={{ opacity: 0.8 }}>· {count}</Text>}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
       </View>
 
       {error && (
@@ -182,4 +218,6 @@ const st = StyleSheet.create({
   meta: { fontSize: 11, marginTop: 3 },
   liveChip: { paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, borderWidth: 1 },
   roleBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, borderWidth: 1, marginLeft: 8 },
+  filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 12 },
+  chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14, borderWidth: 1 },
 });
