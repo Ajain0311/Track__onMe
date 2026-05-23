@@ -12,6 +12,7 @@ import useTimeStore from '../store/timeStore';
 import useAuthStore from '../store/authStore';
 import useGoalStore from '../store/goalStore';
 import { logOut } from '../services/authService';
+import { getMe } from '../services/api';
 import { hasFaceData, deleteFaceData } from '../services/faceRecognitionService';
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
@@ -19,12 +20,14 @@ const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 export default function SettingsScreen({ navigation }) {
   const { colors: g, gradients: grad, themeMode, setThemeMode } = useThemeStore();
   const { totalTimeSeconds, sessions, resetAll, dailyTotals } = useTimeStore();
-  const { user } = useAuthStore();
+  const { user, isAdmin, setIsAdmin } = useAuthStore();
   const { goals, updateGoals, computeStreak } = useGoalStore();
 
   const [isResetting, setIsResetting] = useState(false);
   const [faceRegistered, setFaceRegistered] = useState(false);
   const [appVersion] = useState('1.0.0');
+  const [isRetryingRole, setIsRetryingRole] = useState(false);
+  const [roleRetryMsg, setRoleRetryMsg] = useState(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -83,6 +86,21 @@ export default function SettingsScreen({ navigation }) {
         { text: 'Cancel', style: 'cancel' },
         { text: 'Reset', style: 'destructive', onPress: confirmReset },
       ]);
+    }
+  };
+
+  const handleRetryRole = async () => {
+    setIsRetryingRole(true);
+    setRoleRetryMsg(null);
+    try {
+      const res = await getMe();
+      const role = res.data?.role;
+      setIsAdmin(role === 'admin');
+      setRoleRetryMsg(role === 'admin' ? '✓ Admin access granted! Switch to the Admin tab.' : '✗ This account does not have admin role.');
+    } catch {
+      setRoleRetryMsg('✗ Could not reach server. Try again in a moment.');
+    } finally {
+      setIsRetryingRole(false);
     }
   };
 
@@ -292,6 +310,22 @@ export default function SettingsScreen({ navigation }) {
             />
           </LinearGradient>
         </View>
+
+        {/* Account / admin access */}
+        {!isAdmin && (
+          <View style={st.section}>
+            <Text style={[st.sectionTitle, { color: g.textMuted }]}>ACCOUNT</Text>
+            <LinearGradient colors={grad.card} style={[st.sectionCard, { borderColor: g.border }]}>
+              <SettingRow
+                icon="⚡"
+                title="Reload Admin Access"
+                subtitle={roleRetryMsg || 'Tap if your admin tab is missing after login'}
+                onPress={isRetryingRole ? null : handleRetryRole}
+                rightElement={isRetryingRole ? <ActivityIndicator size="small" color={g.accent} /> : null}
+              />
+            </LinearGradient>
+          </View>
+        )}
 
         {/* Data management */}
         <View style={st.section}>

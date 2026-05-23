@@ -112,14 +112,16 @@ export const useTimeStore = create((set, get) => ({
     return totals;
   },
 
-  // Check in - start a new session
-  // ssid: the WiFi network name the user was on when checking in (null if not on allowed WiFi)
-  checkIn: (ssid = null) => {
+  // Check in - start a new session.
+  // ssid: the WiFi network name the user was on when checking in (null = not via WiFi).
+  // initialSeconds: elapsed seconds to seed the timer with (used when syncing from server
+  //   after an app restart so the timer shows real elapsed time instead of starting at 0).
+  checkIn: (ssid = null, initialSeconds = 0) => {
     const now = new Date();
     set({
       isCheckedIn: true,
       currentSessionStart: now.toISOString(),
-      currentSessionSeconds: 0,
+      currentSessionSeconds: Math.max(0, Math.floor(initialSeconds)),
       checkInSsid: ssid,
       checkInTimestamp: now.getTime(),
     });

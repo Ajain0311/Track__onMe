@@ -106,33 +106,47 @@ export default function DashboardScreen({ navigation }) {
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      checkRequirements();
-      if (user?.id) hasFaceData(user.id).then(setFaceRegistered);
-    }, [checkRequirements, user?.id])
-  );
-
   // ── Status fetch ──
-  const fetchStatus = useCallback(async () => {
-    setStatusError(null);
+  const fetchStatus = useCallback(async (opts = {}) => {
+    const { silent = false } = opts;
+    if (!silent) setStatusError(null);
     try {
       const res = await getStatus();
       const { isCheckedIn: checkedIn, activeSession: session } = res.data;
       setIsCheckedIn(checkedIn);
       setActiveSession(session);
-      // Sync local store with server state
-      // Note: when syncing from server (not a fresh check-in), we pass null SSID
-      // so the WiFi monitor won't auto-checkout this session
-      if (checkedIn && !storeCheckedInRef.current) storeCheckIn(null);
-      else if (!checkedIn && storeCheckedInRef.current) await storeCheckOut();
+
+      // Sync local store with server state.
+      // When syncing from server (not a fresh check-in) we pass null SSID so the
+      // WiFi monitor won't auto-checkout this restored session.
+      if (checkedIn && !storeCheckedInRef.current) {
+        // Seed the timer with actual elapsed time so it doesn't reset to 0:00:00
+        // on app restart or pull-to-refresh while the user is checked in.
+        const elapsedSeconds = session?.checkInTime
+          ? Math.max(0, Math.floor((Date.now() - new Date(session.checkInTime).getTime()) / 1000))
+          : 0;
+        storeCheckIn(null, elapsedSeconds);
+      } else if (!checkedIn && storeCheckedInRef.current) {
+        await storeCheckOut();
+      }
     } catch (error) {
-      setStatusError(getApiErrorMessage(error));
+      if (!silent) setStatusError(getApiErrorMessage(error));
     } finally {
       setStatusLoading(false);
       setRefreshing(false);
     }
   }, [storeCheckIn, storeCheckOut]);
+
+  // ── Re-sync status each time the screen gains focus (e.g. returning from check-in/out) ──
+  useFocusEffect(
+    useCallback(() => {
+      checkRequirements();
+      if (user?.id) hasFaceData(user.id).then(setFaceRegistered);
+      // Silently refresh status so the timer & button states stay accurate
+      // without resetting the loading skeleton every time.
+      fetchStatus({ silent: true });
+    }, [checkRequirements, fetchStatus, user?.id])
+  );
 
   // ── Mount: parallel fetch for faster load ──
   useEffect(() => {

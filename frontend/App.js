@@ -157,9 +157,10 @@ export default function App() {
     // Load user-specific attendance data from AsyncStorage
     useTimeStore.getState().setCurrentUser(user.id);
 
-    // Retry up to 4 times with backoff — Render cold-starts can take 30s+
+    // Retry with backoff — Render free tier cold-starts can take 30-50 s.
+    // Cumulative wait: 0 → 5 → 15 → 30 → 50 s (covers worst-case cold start).
     const fetchRole = async () => {
-      const delays = [0, 5000, 10000, 15000];
+      const delays = [0, 5000, 10000, 15000, 20000];
       for (let i = 0; i < delays.length; i++) {
         if (delays[i]) await new Promise((r) => setTimeout(r, delays[i]));
         try {
