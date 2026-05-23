@@ -9,6 +9,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import useThemeStore from '../../store/themeStore';
 import { adminCreateLocation, adminUpdateLocation, getApiErrorMessage } from '../../services/api';
+import MapPreview from '../../components/MapPreview';
 
 const getLocation = async () => {
   if (Platform.OS === 'web') {
@@ -226,6 +227,18 @@ export default function AdminLocationFormScreen({ route, navigation }) {
               </View>
             </View>
           </Field>
+
+          {/* Map preview */}
+          {latitude && longitude && !isNaN(parseFloat(latitude)) && !isNaN(parseFloat(longitude)) && (
+            <View style={{ marginBottom: 20, borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: g.border }}>
+              <MapPreview
+                latitude={parseFloat(latitude)}
+                longitude={parseFloat(longitude)}
+                radius={parseInt(radius, 10) || 200}
+                height={200}
+              />
+            </View>
+          )}
 
           {/* Radius */}
           <Field label="CHECK-IN RADIUS (meters)">

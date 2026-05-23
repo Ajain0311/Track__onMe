@@ -16,6 +16,7 @@ import {
   getApiErrorMessage,
 } from '../../services/api';
 import Toast from '../../components/Toast';
+import MapPreview from '../../components/MapPreview';
 
 const TABS = [
   { key: 'pending',  label: 'Pending',  emoji: '⏳' },
@@ -239,9 +240,17 @@ export default function AdminLocationRequestsScreen({ navigation }) {
                 <Text style={{ color: g.textMuted, fontSize: 13, marginBottom: 4 }}>
                   Location: <Text style={{ fontWeight: '700', color: g.text }}>{modal.item.name}</Text>
                 </Text>
-                <Text style={{ color: g.textMuted, fontSize: 13, marginBottom: 14 }}>
+                <Text style={{ color: g.textMuted, fontSize: 13, marginBottom: 10 }}>
                   Requested by: <Text style={{ fontWeight: '700', color: g.text }}>{modal.item.userEmail}</Text>
                 </Text>
+                <View style={{ marginBottom: 14, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: g.border }}>
+                  <MapPreview
+                    latitude={modal.item.latitude}
+                    longitude={modal.item.longitude}
+                    radius={modal.item.radiusMeters}
+                    height={160}
+                  />
+                </View>
               </>
             )}
             <Text style={{ color: g.textMuted, fontSize: 12, fontWeight: '700', marginBottom: 6 }}>
