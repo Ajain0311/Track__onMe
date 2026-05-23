@@ -1,7 +1,7 @@
 // App.js — Root: Supabase auth, navigation, WiFi monitoring, animated splash
 
 import React, { useEffect, useRef } from 'react';
-import { ActivityIndicator, View, StyleSheet, Text, Appearance, Animated } from 'react-native';
+import { ActivityIndicator, View, StyleSheet, Text, Appearance, Animated, Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -12,7 +12,7 @@ import useAuthStore from './store/authStore';
 import useThemeStore from './store/themeStore';
 import { useTimeStore } from './store/timeStore';
 import { startWifiMonitoring, stopWifiMonitoring } from './services/wifiMonitor';
-import { getMe } from './services/api';
+import { getMe, trackLogin } from './services/api';
 
 import LoginScreen from './screens/LoginScreen';
 import DashboardScreen from './screens/DashboardScreen';
@@ -38,6 +38,20 @@ import ErrorBoundary from './components/ErrorBoundary';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
+
+// Track a single login event per browser session (web) / per app launch (native)
+let _loginTracked = false;
+const recordLoginOnce = () => {
+  if (_loginTracked) return;
+  try {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (sessionStorage.getItem('loginRecorded') === '1') { _loginTracked = true; return; }
+      sessionStorage.setItem('loginRecorded', '1');
+    }
+    _loginTracked = true;
+    trackLogin(Platform.OS).catch(() => {}); // best-effort, never blocks UI
+  } catch { /* sessionStorage may not exist in private mode */ }
+};
 
 function TabIcon({ emoji, focused }) {
   const { Text: RNText } = require('react-native');
@@ -171,6 +185,8 @@ export default function App() {
         try {
           const res = await getMe();
           setIsAdmin(res.data?.role === 'admin');
+          // Record login activity once per browser session (fire-and-forget)
+          recordLoginOnce();
           return; // success — stop retrying
         } catch {
           if (i === delays.length - 1) setIsAdmin(false); // all retries exhausted

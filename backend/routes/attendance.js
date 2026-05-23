@@ -7,6 +7,7 @@ const { validate, UUID_RE } = require('../middleware/validate');
 const rateLimit = require('../middleware/rateLimit');
 const asyncHandler = require('../utils/asyncHandler');
 const { getUserRole } = require('../services/adminService');
+const activity = require('../services/activityService');
 const {
   checkIn, checkOut, getAttendanceDaily, getAttendance, getStatus,
 } = require('../controllers/attendanceController');
@@ -32,6 +33,18 @@ router.get('/status',           verifyToken, getStatus);
 router.get('/me', verifyToken, asyncHandler(async (req, res) => {
   const role = await getUserRole(req.user.id);
   res.json({ id: req.user.id, email: req.user.email, role });
+}));
+
+// POST /api/me/track-login — frontend calls once on fresh login to record activity
+router.post('/me/track-login', verifyToken, asyncHandler(async (req, res) => {
+  await activity.record({
+    userId: req.user.id,
+    type:   'login',
+    title:  'Signed in',
+    description: req.body?.platform ? `via ${req.body.platform}` : null,
+    metadata: { userAgent: req.headers['user-agent'] },
+  });
+  res.json({ ok: true });
 }));
 
 module.exports = router;

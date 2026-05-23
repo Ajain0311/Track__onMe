@@ -65,6 +65,7 @@ export const getStatus = () => api.get('/status');
 // ─── Current user ─────────────────────────────────────────────────────────────
 
 export const getMe = () => api.get('/me');
+export const trackLogin = (platform) => api.post('/me/track-login', { platform });
 
 // ─── Locations (user-facing) ──────────────────────────────────────────────────
 
