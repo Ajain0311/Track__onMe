@@ -146,8 +146,17 @@ export default function DashboardScreen({ navigation }) {
       // Silently refresh status so the timer & button states stay accurate
       // without resetting the loading skeleton every time.
       fetchStatus({ silent: true });
-      // Best-effort unread notification count
-      getNotifications(true).then((r) => setUnreadCount(r.data?.notifications?.length || 0)).catch(() => {});
+
+      // Best-effort unread notification count, also re-polled every 60s
+      // while this screen is focused so the bell badge stays current.
+      const poll = () => {
+        getNotifications(true)
+          .then((r) => setUnreadCount(r.data?.notifications?.length || 0))
+          .catch(() => {});
+      };
+      poll();
+      const intervalId = setInterval(poll, 60_000);
+      return () => clearInterval(intervalId);
     }, [checkRequirements, fetchStatus, user?.id])
   );
 
