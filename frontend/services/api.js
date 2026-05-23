@@ -73,7 +73,8 @@ export const getActiveLocations = () => api.get('/locations');
 
 // ─── Admin ────────────────────────────────────────────────────────────────────
 
-export const adminGetStats = () => api.get('/admin/stats');
+export const adminGetStats          = () => api.get('/admin/stats');
+export const adminGetActiveSessions = () => api.get('/admin/active-sessions');
 export const adminGetUsers = (page = 1) => api.get('/admin/users', { params: { page } });
 export const adminGetUserAttendance = (userId) => api.get(`/admin/users/${userId}/attendance`);
 export const adminUpdateUserRole = (userId, role) => api.patch(`/admin/users/${userId}/role`, { role });

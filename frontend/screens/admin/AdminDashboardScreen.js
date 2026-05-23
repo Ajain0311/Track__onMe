@@ -155,6 +155,30 @@ export default function AdminDashboardScreen({ navigation }) {
               </View>
             </TouchableOpacity>
 
+            {/* Live Attendance action */}
+            <TouchableOpacity
+              style={[st.requestsCard, {
+                backgroundColor: (stats?.activeNow || 0) > 0 ? 'rgba(62,232,199,0.08)' : g.glass,
+                borderColor:     (stats?.activeNow || 0) > 0 ? 'rgba(62,232,199,0.45)' : g.border,
+              }]}
+              onPress={() => navigation.navigate('AdminLiveAttendance')}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text style={{ fontSize: 28 }}>🟢</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[st.actionLabel, { color: g.text }]}>Live Attendance</Text>
+                  <Text style={[st.actionSub, { color: g.textMuted }]}>Who is currently checked in</Text>
+                </View>
+                {(stats?.activeNow || 0) > 0 && (
+                  <View style={[st.pendingBadge, { backgroundColor: g.mint || '#3ee8c7' }]}>
+                    <Text style={{ color: '#000', fontSize: 12, fontWeight: '900' }}>{stats.activeNow}</Text>
+                  </View>
+                )}
+                <Text style={{ color: g.textDim, fontSize: 20 }}>›</Text>
+              </View>
+            </TouchableOpacity>
+
             {/* Audit Logs action */}
             <TouchableOpacity
               style={[st.requestsCard, { backgroundColor: g.glass, borderColor: g.border }]}

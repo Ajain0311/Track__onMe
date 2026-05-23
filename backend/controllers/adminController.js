@@ -3,7 +3,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const AppError = require('../utils/AppError');
 const {
-  getAllUsers, getUserAttendanceAdmin, getDashboardStats, setUserRole,
+  getAllUsers, getUserAttendanceAdmin, getDashboardStats, setUserRole, getActiveSessions,
 } = require('../services/adminService');
 const audit = require('../services/auditService');
 
@@ -58,4 +58,10 @@ const listAuditLogs = asyncHandler(async (req, res) => {
   res.json(result);
 });
 
-module.exports = { getStats, listUsers, getUserAttendance, updateUserRole, listAuditLogs };
+// GET /api/admin/active-sessions
+const listActiveSessions = asyncHandler(async (_req, res) => {
+  const sessions = await getActiveSessions();
+  res.json({ sessions, count: sessions.length });
+});
+
+module.exports = { getStats, listUsers, getUserAttendance, updateUserRole, listAuditLogs, listActiveSessions };

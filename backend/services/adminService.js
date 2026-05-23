@@ -139,10 +139,42 @@ const getDashboardStats = async () => {
   };
 };
 
+// ─── Live attendance (admin) ──────────────────────────────────────────────────
+// Currently-active sessions joined with user emails. Used by the admin live view.
+
+const getActiveSessions = async () => {
+  const { data: rows, error } = await supabase
+    .from('attendance')
+    .select('id, user_id, check_in_time, location_id, location_name, check_in_method, latitude, longitude')
+    .is('check_out_time', null)
+    .order('check_in_time', { ascending: false });
+  if (error) throw new Error(error.message);
+  if (!rows?.length) return [];
+
+  // Resolve emails in one batch via the auth admin listUsers (cap perPage at 200)
+  const { data: { users } } = await supabase.auth.admin.listUsers({ perPage: 200 });
+  const emailMap = Object.fromEntries((users || []).map((u) => [u.id, u.email]));
+
+  const now = Date.now();
+  return rows.map((r) => ({
+    id:           r.id,
+    userId:       r.user_id,
+    userEmail:    emailMap[r.user_id] || null,
+    checkInTime:  r.check_in_time,
+    elapsedMin:   Math.max(0, Math.round((now - new Date(r.check_in_time).getTime()) / 60000)),
+    locationId:   r.location_id || null,
+    locationName: r.location_name || null,
+    method:       r.check_in_method || null,
+    latitude:     r.latitude ?? null,
+    longitude:    r.longitude ?? null,
+  }));
+};
+
 module.exports = {
   getUserRole,
   setUserRole,
   getAllUsers,
   getUserAttendanceAdmin,
   getDashboardStats,
+  getActiveSessions,
 };

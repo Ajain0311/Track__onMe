@@ -29,6 +29,7 @@ import AdminLocationsScreen from './screens/admin/AdminLocationsScreen';
 import AdminLocationFormScreen from './screens/admin/AdminLocationFormScreen';
 import AdminLocationRequestsScreen from './screens/admin/AdminLocationRequestsScreen';
 import AdminAuditLogsScreen from './screens/admin/AdminAuditLogsScreen';
+import AdminLiveAttendanceScreen from './screens/admin/AdminLiveAttendanceScreen';
 import LocationRequestScreen from './screens/LocationRequestScreen';
 import MyLocationRequestsScreen from './screens/MyLocationRequestsScreen';
 import NotificationsScreen from './screens/NotificationsScreen';
@@ -233,6 +234,7 @@ export default function App() {
                 <Stack.Screen name="AdminLocationForm" component={AdminLocationFormScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminLocationRequests" component={AdminLocationRequestsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminAuditLogs" component={AdminAuditLogsScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AdminLiveAttendance" component={AdminLiveAttendanceScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="LocationRequest" component={LocationRequestScreen} options={{ animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="MyLocationRequests" component={MyLocationRequestsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ animation: 'slide_from_right' }} />

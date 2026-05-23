@@ -6,7 +6,7 @@ const { verifyToken } = require('../middleware/auth');
 const { requireRole } = require('../middleware/requireRole');
 const { validate, UUID_RE } = require('../middleware/validate');
 const {
-  getStats, listUsers, getUserAttendance, updateUserRole, listAuditLogs,
+  getStats, listUsers, getUserAttendance, updateUserRole, listAuditLogs, listActiveSessions,
 } = require('../controllers/adminController');
 const {
   listAll, getOne, create, update, toggleActive, remove,
@@ -19,7 +19,8 @@ const {
 router.use(verifyToken, requireRole(['admin', 'manager']));
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
-router.get('/stats', getStats);
+router.get('/stats',           getStats);
+router.get('/active-sessions', listActiveSessions);
 
 // ─── Users ────────────────────────────────────────────────────────────────────
 router.get('/users', listUsers);
