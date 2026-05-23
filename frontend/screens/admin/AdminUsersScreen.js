@@ -59,9 +59,12 @@ export default function AdminUsersScreen({ navigation }) {
     return users.filter(fn).length;
   };
 
+  // Cycles user → manager → admin → user
+  const ROLE_CYCLE = ['user', 'manager', 'admin'];
   const handleRoleToggle = (user) => {
-    const newRole = user.role === 'admin' ? 'user' : 'admin';
-    const msg = `Make ${user.email} ${newRole === 'admin' ? 'an admin' : 'a regular user'}?`;
+    const i = ROLE_CYCLE.indexOf(user.role);
+    const newRole = ROLE_CYCLE[(i + 1) % ROLE_CYCLE.length] || 'user';
+    const msg = `Change ${user.email}'s role to "${newRole}"?`;
     const proceed = async () => {
       try {
         await adminUpdateUserRole(user.id, newRole);
@@ -79,6 +82,13 @@ export default function AdminUsersScreen({ navigation }) {
         { text: 'Confirm', onPress: proceed },
       ]);
     }
+  };
+
+  const roleStyle = (role) => {
+    if (role === 'admin')   return { bg: 'rgba(255,179,71,0.18)',  border: 'rgba(255,179,71,0.4)',  text: '#ffb347', label: '⚡ Admin' };
+    if (role === 'manager') return { bg: 'rgba(74,144,226,0.18)',  border: 'rgba(74,144,226,0.4)',  text: '#4a90e2', label: '👔 Manager' };
+    if (role === 'super_admin') return { bg: 'rgba(229,83,75,0.18)', border: 'rgba(229,83,75,0.4)', text: '#e5534b', label: '🛡 Super' };
+    return { bg: '_glass', border: '_border', text: '_muted', label: 'User' };
   };
 
   const renderUser = ({ item: u }) => (
@@ -109,18 +119,22 @@ export default function AdminUsersScreen({ navigation }) {
         </Text>
       </View>
 
-      {/* Role badge */}
-      <TouchableOpacity
-        style={[st.roleBadge, {
-          backgroundColor: u.role === 'admin' ? 'rgba(255,179,71,0.18)' : g.glass,
-          borderColor: u.role === 'admin' ? 'rgba(255,179,71,0.4)' : g.border,
-        }]}
-        onPress={() => handleRoleToggle(u)}
-      >
-        <Text style={{ color: u.role === 'admin' ? '#ffb347' : g.textMuted, fontSize: 10, fontWeight: '800' }}>
-          {u.role === 'admin' ? '⚡ Admin' : 'User'}
-        </Text>
-      </TouchableOpacity>
+      {/* Role badge — tap to cycle */}
+      {(() => {
+        const rs = roleStyle(u.role);
+        const bg     = rs.bg === '_glass'  ? g.glass     : rs.bg;
+        const border = rs.border === '_border' ? g.border : rs.border;
+        const text   = rs.text === '_muted' ? g.textMuted : rs.text;
+        return (
+          <TouchableOpacity
+            style={[st.roleBadge, { backgroundColor: bg, borderColor: border }]}
+            onPress={() => handleRoleToggle(u)}
+            disabled={u.role === 'super_admin'}
+          >
+            <Text style={{ color: text, fontSize: 10, fontWeight: '800' }}>{rs.label}</Text>
+          </TouchableOpacity>
+        );
+      })()}
     </TouchableOpacity>
   );
 
