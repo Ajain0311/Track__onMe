@@ -50,22 +50,26 @@ ALTER TABLE location_requests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_locations     ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own requests
-CREATE POLICY IF NOT EXISTS "users_read_own_requests"
+DROP POLICY IF EXISTS "users_read_own_requests" ON location_requests;
+CREATE POLICY "users_read_own_requests"
   ON location_requests FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
 
 -- Users can submit new requests
-CREATE POLICY IF NOT EXISTS "users_insert_own_requests"
+DROP POLICY IF EXISTS "users_insert_own_requests" ON location_requests;
+CREATE POLICY "users_insert_own_requests"
   ON location_requests FOR INSERT TO authenticated
   WITH CHECK (auth.uid() = user_id);
 
 -- Users can cancel their own PENDING requests
-CREATE POLICY IF NOT EXISTS "users_delete_own_pending_requests"
+DROP POLICY IF EXISTS "users_delete_own_pending_requests" ON location_requests;
+CREATE POLICY "users_delete_own_pending_requests"
   ON location_requests FOR DELETE TO authenticated
   USING (auth.uid() = user_id AND status = 'pending');
 
 -- Users can read their own user_locations (so they can pick them)
-CREATE POLICY IF NOT EXISTS "users_read_own_user_locations"
+DROP POLICY IF EXISTS "users_read_own_user_locations" ON user_locations;
+CREATE POLICY "users_read_own_user_locations"
   ON user_locations FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
 
