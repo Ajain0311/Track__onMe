@@ -1,0 +1,15 @@
+# Netlify build config for AttendTrack (Expo web)
+# Docs: https://docs.netlify.com/configure-builds/file-based-configuration/
+
+[build]
+  # All frontend source lives in /frontend
+  base    = "frontend"
+  # Expo SDK 52 exports to /frontend/dist with Metro bundler
+  command = "npx expo export --platform web"
+  publish = "dist"
+
+# SPA catch-all — every path serves index.html so React Navigation handles routing
+[[redirects]]
+  from   = "/*"
+  to     = "/index.html"
+  status = 200
