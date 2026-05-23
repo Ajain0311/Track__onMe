@@ -6,7 +6,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator,
-  Dimensions, Platform,
+  Dimensions, Platform, Linking,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -326,7 +326,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
     );
   }
 
-  // ── Permission gates (native only — browser asks automatically when camera mounts)
+  // ── Permission gates (native only — browser handles permissions automatically)
   if (!isWeb) {
     if (!permission) {
       return (
@@ -340,17 +340,26 @@ export default function FaceVerificationScreen({ navigation, route }) {
     }
 
     if (!permission.granted) {
+      const canAsk = permission.canAskAgain !== false;
       return (
         <LinearGradient colors={grad.screen} style={s.container}>
           <View style={s.centered}>
             <Text style={{ fontSize: 48, marginBottom: 16 }}>📷</Text>
             <Text style={[s.title, { color: g.text, textAlign: 'center' }]}>Camera Access Needed</Text>
             <Text style={[s.hint, { color: g.textMuted, textAlign: 'center', marginBottom: 28 }]}>
-              Camera permission is required to verify your face.
+              {canAsk
+                ? 'Camera permission is required to verify your face.'
+                : 'Camera permission was denied. Please enable it in your device Settings to continue.'}
             </Text>
-            <TouchableOpacity style={[s.btn, { backgroundColor: g.accent }]} onPress={requestPermission}>
-              <Text style={s.btnText}>Grant Permission</Text>
-            </TouchableOpacity>
+            {canAsk ? (
+              <TouchableOpacity style={[s.btn, { backgroundColor: g.accent }]} onPress={requestPermission}>
+                <Text style={s.btnText}>Grant Permission</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={[s.btn, { backgroundColor: g.accent }]} onPress={() => Linking.openSettings()}>
+                <Text style={s.btnText}>Open Settings</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={[s.cancelBtn, { borderColor: g.border }]} onPress={() => navigation.goBack()}>
               <Text style={[s.cancelText, { color: g.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
