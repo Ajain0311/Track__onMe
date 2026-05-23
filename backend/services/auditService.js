@@ -35,7 +35,7 @@ const list = async ({ page = 1, perPage = 50, action = null, actorId = null } = 
 
   const { data, count, error } = await q;
   if (error) {
-    if (/relation .* does not exist/i.test(error.message)) {
+    if (/relation .* does not exist|could not find the table/i.test(error.message)) {
       logger.warn('audit_logs table missing — apply migration 003');
       return { rows: [], total: 0, page, perPage };
     }

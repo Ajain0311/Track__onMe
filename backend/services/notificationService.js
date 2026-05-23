@@ -25,7 +25,7 @@ const listForUser = async (userId, { unreadOnly = false, limit = 50 } = {}) => {
   const { data, error } = await q;
   if (error) {
     // Graceful fallback if migration 003 hasn't been applied yet
-    if (/relation .* does not exist/i.test(error.message)) {
+    if (/relation .* does not exist|could not find the table/i.test(error.message)) {
       logger.warn('notifications table missing — apply migration 003');
       return [];
     }

@@ -10,13 +10,27 @@ const { supabase } = require('../services/supabase');
 const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
 
+const isMissingRelation = (err) =>
+  /relation .* does not exist|could not find the table|could not find a relationship/i.test(err?.message || '');
+
 const getRoleAndPermissions = async (userId) => {
-  // Prefer the FK-based lookup; fall back to legacy text column
-  const { data, error } = await supabase
+  // Prefer the FK-based lookup with roles join (post-migration-003)
+  let data, error;
+  ({ data, error } = await supabase
     .from('user_roles')
     .select('role, role_id, roles(slug)')
     .eq('user_id', userId)
-    .maybeSingle();
+    .maybeSingle());
+
+  // If migration 003 isn't applied (roles table missing or join unavailable),
+  // fall back to the legacy text-only query.
+  if (error && isMissingRelation(error)) {
+    ({ data, error } = await supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', userId)
+      .maybeSingle());
+  }
 
   if (error) throw new Error(error.message);
   if (!data) return { roleSlug: 'user', permissions: [] };
@@ -26,15 +40,12 @@ const getRoleAndPermissions = async (userId) => {
   // Fetch permissions (gracefully handle if role_permissions table missing)
   let permissions = [];
   if (data.role_id) {
-    try {
-      const { data: rp } = await supabase
-        .from('role_permissions')
-        .select('permissions(slug)')
-        .eq('role_id', data.role_id);
-      permissions = (rp || []).map((r) => r.permissions?.slug).filter(Boolean);
-    } catch {
-      /* table missing — pre-migration */
-    }
+    const { data: rp, error: rpErr } = await supabase
+      .from('role_permissions')
+      .select('permissions(slug)')
+      .eq('role_id', data.role_id);
+    if (!rpErr) permissions = (rp || []).map((r) => r.permissions?.slug).filter(Boolean);
+    // If table missing, leave permissions empty — role check still works via slug
   }
 
   return { roleSlug, permissions };

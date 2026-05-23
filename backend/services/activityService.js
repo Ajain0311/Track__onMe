@@ -26,7 +26,7 @@ const listForUser = async (userId, { limit = 50 } = {}) => {
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) {
-    if (/relation .* does not exist/i.test(error.message)) {
+    if (/relation .* does not exist|could not find the table/i.test(error.message)) {
       logger.warn('activity_logs table missing — apply migration 003');
       return [];
     }
