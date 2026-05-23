@@ -41,7 +41,7 @@ export function getApiErrorMessage(error) {
   if (error?.code === 'ECONNABORTED' || msg.toLowerCase().includes('timeout'))
     return 'Request timed out. The server may be waking up — try again in a moment.';
   if (error?.response?.data?.error) return String(error.response.data.error);
-  if (msg === 'Network Error' || !error?.response?)
+  if (msg === 'Network Error' || !error?.response)
     return 'Cannot reach the server. Check your internet connection.';
   return msg || 'Something went wrong.';
 }
@@ -83,3 +83,18 @@ export const adminCreateLocation = (payload) => api.post('/admin/locations', pay
 export const adminUpdateLocation = (id, payload) => api.put(`/admin/locations/${id}`, payload);
 export const adminToggleLocation = (id) => api.patch(`/admin/locations/${id}/toggle`);
 export const adminDeleteLocation = (id) => api.delete(`/admin/locations/${id}`);
+
+// ─── Location Requests (user) ─────────────────────────────────────────────────
+
+export const getMyLocationRequests = () => api.get('/location-requests');
+export const submitLocationRequest = (payload) => api.post('/location-requests', payload);
+export const cancelLocationRequest = (id) => api.delete(`/location-requests/${id}`);
+
+// ─── Location Requests (admin) ────────────────────────────────────────────────
+
+export const adminGetLocationRequests = (status = 'pending') =>
+  api.get('/admin/location-requests', { params: { status } });
+export const adminApproveLocationRequest = (id, adminNote) =>
+  api.patch(`/admin/location-requests/${id}/approve`, { adminNote });
+export const adminRejectLocationRequest = (id, adminNote) =>
+  api.patch(`/admin/location-requests/${id}/reject`, { adminNote });

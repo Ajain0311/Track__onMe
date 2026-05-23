@@ -1,5 +1,13 @@
 // services/wifiMonitor.js
-// WiFi connection monitoring for auto check-out
+// WiFi-aware auto check-out.
+//
+// CRITICAL RULES:
+//  1. Only auto-checkout if the user checked in while on the allowed WiFi SSID.
+//     GPS / location check-ins require manual checkout — never auto-checkout.
+//  2. Grace period: never auto-checkout within GRACE_PERIOD_MS after check-in.
+//     This prevents the immediate-checkout bug on app launch / first check.
+//  3. Debounce: require CONSECUTIVE_FAILURES consecutive checks off allowed WiFi
+//     before triggering (prevents false positives from brief signal drops).
 
 import { Alert, Platform, AppState } from 'react-native';
 import * as Network from 'expo-network';
@@ -8,145 +16,135 @@ import { checkOut } from './api';
 import { getAllowedWifiName } from './wifiService';
 
 const ALLOWED_WIFI_NAME = getAllowedWifiName();
-const CHECK_INTERVAL = 5000; // Check every 5 seconds
+const CHECK_INTERVAL_MS   = 8000;   // poll every 8 seconds
+const GRACE_PERIOD_MS     = 120000; // 2 minutes grace after check-in
+const CONSECUTIVE_FAILURES = 3;     // off-WiFi detections before auto-checkout
 
 let monitorInterval = null;
 let isMonitoring = false;
-let lastWifiState = null;
+let offWifiCount = 0;
+let appStateSubscription = null;
 
-/**
- * Check current WiFi state and perform auto check-out if needed
- */
+// ─────────────────────────────────────────────────────────────────────────────
+
 const checkWifiAndAutoCheckout = async () => {
   try {
-    const { isCheckedIn } = useTimeStore.getState();
-    
-    // Only proceed if user is checked in
+    const state = useTimeStore.getState();
+    const { isCheckedIn, checkInSsid, checkInTimestamp } = state;
+
+    // 1. Only proceed if actually checked in
     if (!isCheckedIn) {
+      offWifiCount = 0;
       return;
     }
 
-    const networkState = await Network.getNetworkStateAsync();
-    const currentWifiState = {
-      isConnected: networkState.isConnected,
-      isWifi: networkState.type === Network.NetworkStateType.WIFI,
-      ssid: networkState.ssid,
-    };
+    // 2. Only auto-checkout if the user checked in ON the allowed WiFi
+    if (!checkInSsid || checkInSsid !== ALLOWED_WIFI_NAME) {
+      // GPS / location check-in — never auto-checkout
+      offWifiCount = 0;
+      return;
+    }
 
-    // Determine if on allowed WiFi
+    // 3. Grace period — don't touch within 2 minutes of check-in
+    if (checkInTimestamp && Date.now() - checkInTimestamp < GRACE_PERIOD_MS) {
+      offWifiCount = 0;
+      return;
+    }
+
+    // 4. Check current WiFi
+    const networkState = await Network.getNetworkStateAsync();
+    const isWifi = networkState.type === Network.NetworkStateType.WIFI;
+    const ssid   = networkState.ssid;
+
     let isOnAllowedWifi = false;
-    if (currentWifiState.isConnected && currentWifiState.isWifi) {
-      if (currentWifiState.ssid) {
-        isOnAllowedWifi = currentWifiState.ssid === ALLOWED_WIFI_NAME;
+    if (networkState.isConnected && isWifi) {
+      if (ssid) {
+        isOnAllowedWifi = ssid === ALLOWED_WIFI_NAME;
       } else {
-        // If SSID not available, assume connected to allowed WiFi
-        // This handles cases where SSID permission is not granted
+        // SSID unreadable (permission missing) — assume still on same WiFi
         isOnAllowedWifi = true;
       }
     }
 
-    // Store state for comparison
-    lastWifiState = currentWifiState;
-
-    // If not on allowed WiFi, perform auto check-out
-    if (!isOnAllowedWifi) {
-      console.log('[WiFiMonitor] WiFi disconnected or changed. Performing auto check-out...');
-      
-      try {
-        // Call backend check-out
-        await checkOut();
-        
-        // Update local store
-        const { checkOut: storeCheckOut } = useTimeStore.getState();
-        await storeCheckOut();
-        
-        console.log('[WiFiMonitor] Auto check-out successful');
-        
-        // Show alert to user (only if app is in foreground)
-        if (AppState.currentState === 'active') {
-          Alert.alert(
-            'Auto Check-out',
-            'You have been automatically checked out because you disconnected from the office WiFi.',
-            [{ text: 'OK' }]
-          );
-        }
-      } catch (error) {
-        console.error('[WiFiMonitor] Auto check-out failed:', error);
-      }
+    if (isOnAllowedWifi) {
+      // Back on allowed WiFi — reset failure counter
+      offWifiCount = 0;
+      return;
     }
-  } catch (error) {
-    console.error('[WiFiMonitor] Error in check:', error);
+
+    // 5. Off allowed WiFi — increment failure count
+    offWifiCount += 1;
+    console.log(`[WiFiMonitor] Off allowed WiFi (${offWifiCount}/${CONSECUTIVE_FAILURES})`);
+
+    if (offWifiCount < CONSECUTIVE_FAILURES) return; // wait for more failures
+
+    // 6. CONSECUTIVE_FAILURES reached — perform auto check-out
+    offWifiCount = 0;
+    console.log('[WiFiMonitor] Consecutive off-WiFi threshold reached — auto checkout');
+
+    try {
+      await checkOut();
+      await useTimeStore.getState().checkOut();
+      console.log('[WiFiMonitor] Auto check-out successful');
+
+      if (AppState.currentState === 'active') {
+        Alert.alert(
+          'Auto Check-out',
+          'You have been automatically checked out because you left the office WiFi network.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (err) {
+      console.error('[WiFiMonitor] Auto check-out failed:', err?.message || err);
+    }
+  } catch (err) {
+    console.error('[WiFiMonitor] Monitor error:', err?.message || err);
   }
 };
 
-/**
- * Start monitoring WiFi connection for auto check-out
- */
+// ─────────────────────────────────────────────────────────────────────────────
+
 export const startWifiMonitoring = () => {
-  if (isMonitoring) {
-    console.log('[WiFiMonitor] Already monitoring');
-    return;
-  }
-
-  console.log('[WiFiMonitor] Starting WiFi monitoring...');
+  if (isMonitoring) return;
+  console.log('[WiFiMonitor] Starting (allowed SSID:', ALLOWED_WIFI_NAME, ')');
   isMonitoring = true;
-  
-  // Initial check
-  checkWifiAndAutoCheckout();
-  
-  // Set up interval
-  monitorInterval = setInterval(checkWifiAndAutoCheckout, CHECK_INTERVAL);
-  
-  // Also check when app comes to foreground
-  AppState.addEventListener('change', handleAppStateChange);
+  offWifiCount = 0;
+
+  // ⚠️  Do NOT run an immediate check here — it causes auto-checkout on app open
+  // before the check-in state has been properly restored.
+  monitorInterval = setInterval(checkWifiAndAutoCheckout, CHECK_INTERVAL_MS);
+
+  if (Platform.OS !== 'web') {
+    appStateSubscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        // App foregrounded — reset failure counter to avoid stale counts
+        offWifiCount = 0;
+        checkWifiAndAutoCheckout();
+      }
+    });
+  }
 };
 
-/**
- * Stop monitoring WiFi connection
- */
 export const stopWifiMonitoring = () => {
-  if (!isMonitoring) {
-    return;
-  }
-
-  console.log('[WiFiMonitor] Stopping WiFi monitoring...');
+  if (!isMonitoring) return;
+  console.log('[WiFiMonitor] Stopping');
   isMonitoring = false;
-  
+  offWifiCount = 0;
+
   if (monitorInterval) {
     clearInterval(monitorInterval);
     monitorInterval = null;
   }
-  
-  // Remove app state listener
-  // Note: In newer React Native versions, we need to store the subscription
-  // For simplicity, we're not removing it here, but it won't cause issues
-};
-
-/**
- * Handle app state changes
- */
-const handleAppStateChange = (nextAppState) => {
-  if (nextAppState === 'active') {
-    // App came to foreground, check WiFi immediately
-    checkWifiAndAutoCheckout();
+  if (appStateSubscription) {
+    appStateSubscription.remove();
+    appStateSubscription = null;
   }
 };
 
-/**
- * Check if monitoring is active
- * @returns {boolean}
- */
 export const isWifiMonitoringActive = () => isMonitoring;
 
-/**
- * Force an immediate WiFi check
- */
 export const forceWifiCheck = async () => {
   await checkWifiAndAutoCheckout();
 };
 
-/**
- * Get last known WiFi state
- * @returns {Object|null}
- */
-export const getLastWifiState = () => lastWifiState;
+export const getOffWifiCount = () => offWifiCount;

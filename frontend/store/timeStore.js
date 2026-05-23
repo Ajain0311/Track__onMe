@@ -17,6 +17,8 @@ export const useTimeStore = create((set, get) => ({
   isCheckedIn: false,
   currentSessionStart: null,
   currentSessionSeconds: 0,
+  checkInSsid: null,       // WiFi SSID active at the time of check-in (null = not via WiFi)
+  checkInTimestamp: null,  // epoch ms of check-in — used for grace period in WiFi monitor
   
   // Total accumulated time (in seconds) - per user
   totalTimeSeconds: 0,
@@ -33,15 +35,17 @@ export const useTimeStore = create((set, get) => ({
   // Set current user and load their data
   setCurrentUser: async (userId) => {
     if (!userId) {
-      set({ 
+      set({
         currentUserId: null,
         isCheckedIn: false,
         currentSessionStart: null,
         currentSessionSeconds: 0,
+        checkInSsid: null,
+        checkInTimestamp: null,
         totalTimeSeconds: 0,
         sessions: [],
         dailyTotals: {},
-        isLoading: false 
+        isLoading: false
       });
       return;
     }
@@ -109,12 +113,15 @@ export const useTimeStore = create((set, get) => ({
   },
 
   // Check in - start a new session
-  checkIn: () => {
+  // ssid: the WiFi network name the user was on when checking in (null if not on allowed WiFi)
+  checkIn: (ssid = null) => {
     const now = new Date();
     set({
       isCheckedIn: true,
       currentSessionStart: now.toISOString(),
       currentSessionSeconds: 0,
+      checkInSsid: ssid,
+      checkInTimestamp: now.getTime(),
     });
   },
 
@@ -165,6 +172,8 @@ export const useTimeStore = create((set, get) => ({
       totalTimeSeconds: newTotalTime,
       sessions: updatedSessions,
       dailyTotals: updatedDailyTotals,
+      checkInSsid: null,
+      checkInTimestamp: null,
     });
   },
 

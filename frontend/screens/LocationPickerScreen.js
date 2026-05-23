@@ -225,10 +225,34 @@ export default function LocationPickerScreen({ navigation, route }) {
           ListEmptyComponent={
             <View style={st.empty}>
               <Text style={{ fontSize: 40, marginBottom: 12 }}>📍</Text>
-              <Text style={{ color: g.textMuted, fontSize: 16, textAlign: 'center' }}>
-                No active locations configured.{'\n'}Contact your administrator.
+              <Text style={{ color: g.textMuted, fontSize: 16, textAlign: 'center', marginBottom: 20 }}>
+                No active locations yet.{'\n'}Request one and admin will approve it.
               </Text>
+              <TouchableOpacity
+                style={[st.reqBtn, { backgroundColor: g.accent }]}
+                onPress={() => navigation.navigate('LocationRequest')}
+              >
+                <Text style={{ color: '#fff', fontWeight: '800', fontSize: 14 }}>+ Request a Location</Text>
+              </TouchableOpacity>
             </View>
+          }
+          ListFooterComponent={
+            enriched.length > 0 ? (
+              <View style={st.footer}>
+                <TouchableOpacity
+                  style={[st.footerBtn, { backgroundColor: g.accentSoft, borderColor: g.borderGlow }]}
+                  onPress={() => navigation.navigate('LocationRequest')}
+                >
+                  <Text style={{ color: g.accent, fontWeight: '700', fontSize: 13 }}>+ Request a new location</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[st.footerBtn, { backgroundColor: g.glass, borderColor: g.border, marginTop: 8 }]}
+                  onPress={() => navigation.navigate('MyLocationRequests')}
+                >
+                  <Text style={{ color: g.textMuted, fontWeight: '600', fontSize: 13 }}>📋 My location requests</Text>
+                </TouchableOpacity>
+              </View>
+            ) : null
           }
         />
       )}
@@ -256,4 +280,7 @@ const st = StyleSheet.create({
   metaRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
   chip: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1 },
   chevronArea: { justifyContent: 'center', paddingHorizontal: 14 },
+  footer: { paddingTop: 10, paddingBottom: 20 },
+  footerBtn: { borderRadius: 14, paddingVertical: 12, alignItems: 'center', borderWidth: 1 },
+  reqBtn: { paddingHorizontal: 24, paddingVertical: 13, borderRadius: 14 },
 });

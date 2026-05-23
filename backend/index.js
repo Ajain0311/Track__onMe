@@ -7,6 +7,7 @@ const cors = require('cors');
 const attendanceRoutes = require('./routes/attendance');
 const adminRoutes = require('./routes/admin');
 const locationRoutes = require('./routes/locations');
+const locationRequestRoutes = require('./routes/locationRequests');
 
 require('./services/supabase');
 
@@ -32,9 +33,10 @@ app.use((req, _res, next) => {
 
 app.get('/', (_req, res) => res.status(200).json({ status: 'ok', message: 'AttendTrack API' }));
 
-app.use('/api', attendanceRoutes);          // /api/checkin, /api/status, /api/me …
-app.use('/api/locations', locationRoutes);  // /api/locations (active list for users)
-app.use('/api/admin', adminRoutes);         // /api/admin/* (admin-only)
+app.use('/api', attendanceRoutes);                         // /api/checkin, /api/status, /api/me …
+app.use('/api/locations', locationRoutes);                 // /api/locations (active list for users)
+app.use('/api/location-requests', locationRequestRoutes);  // /api/location-requests (user requests)
+app.use('/api/admin', adminRoutes);                        // /api/admin/* (admin-only)
 
 // ─── Global Error Handler ────────────────────────────────────────────────────
 

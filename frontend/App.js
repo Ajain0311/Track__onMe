@@ -27,6 +27,9 @@ import AdminUsersScreen from './screens/admin/AdminUsersScreen';
 import AdminUserDetailScreen from './screens/admin/AdminUserDetailScreen';
 import AdminLocationsScreen from './screens/admin/AdminLocationsScreen';
 import AdminLocationFormScreen from './screens/admin/AdminLocationFormScreen';
+import AdminLocationRequestsScreen from './screens/admin/AdminLocationRequestsScreen';
+import LocationRequestScreen from './screens/LocationRequestScreen';
+import MyLocationRequestsScreen from './screens/MyLocationRequestsScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -144,9 +147,16 @@ export default function App() {
     return () => subscription.unsubscribe();
   }, []);
 
-  // Fetch role whenever user changes
+  // Fetch role + initialize time store whenever user changes
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      // Clear user-specific time store data on logout
+      useTimeStore.getState().setCurrentUser(null);
+      return;
+    }
+    // Load user-specific attendance data from AsyncStorage
+    useTimeStore.getState().setCurrentUser(user.id);
+
     getMe().then((res) => {
       setIsAdmin(res.data?.role === 'admin');
     }).catch(() => setIsAdmin(false));
@@ -185,6 +195,9 @@ export default function App() {
               <Stack.Screen name="AdminUserDetail" component={AdminUserDetailScreen} options={{ animation: 'slide_from_right' }} />
               <Stack.Screen name="AdminLocations" component={AdminLocationsScreen} options={{ animation: 'slide_from_right' }} />
               <Stack.Screen name="AdminLocationForm" component={AdminLocationFormScreen} options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="AdminLocationRequests" component={AdminLocationRequestsScreen} options={{ animation: 'slide_from_right' }} />
+              <Stack.Screen name="LocationRequest" component={LocationRequestScreen} options={{ animation: 'slide_from_bottom' }} />
+              <Stack.Screen name="MyLocationRequests" component={MyLocationRequestsScreen} options={{ animation: 'slide_from_right' }} />
             </>
           ) : (
             <Stack.Screen name="Login" component={LoginScreen} />

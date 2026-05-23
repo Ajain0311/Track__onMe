@@ -1,3 +1,8 @@
+// screens/FaceVerificationScreen.js
+// Real-time face similarity check: requires CONSECUTIVE_MATCHES frames in a row
+// above threshold before the verify button activates. This prevents photo attacks
+// and ensures the face is consistently matching.
+
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator,
@@ -13,13 +18,19 @@ import {
   processDetectedFace,
   validateFacePosition,
   extractFaceFeatures,
-  verifyFace,
-  hasFaceData,
+  getFaceData,
+  calculateSimilarity,
 } from '../services/faceRecognitionService';
 import { checkIn, checkOut, getApiErrorMessage } from '../services/api';
+import { getWifiInfo } from '../services/wifiService';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const CAMERA_SIZE = Math.min(screenWidth - 48, screenHeight * 0.42, 380);
+
+// Require this many CONSECUTIVE frames above threshold to confirm identity
+const CONSECUTIVE_MATCHES = 3;
+// Similarity threshold (82% normalized geometric match required)
+const SIMILARITY_THRESHOLD = 0.82;
 
 export default function FaceVerificationScreen({ navigation, route }) {
   const { mode, location: routeLocation = null } = route.params || { mode: 'checkin' };
@@ -35,22 +46,32 @@ export default function FaceVerificationScreen({ navigation, route }) {
     isWeb ? '✓ Ready — click the button below' : 'Position your face in the frame'
   );
   const [similarity, setSimilarity] = useState(0);
+  const [consecutiveMatches, setConsecutiveMatches] = useState(0);
+  const [faceMatchConfirmed, setFaceMatchConfirmed] = useState(false);
   const [faceBounds, setFaceBounds] = useState(null);
   const [lightingQuality, setLightingQuality] = useState('unknown');
   const [slowRequest, setSlowRequest] = useState(false);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
+  const [storedFaceData, setStoredFaceData] = useState(null);
+  const [faceDataLoading, setFaceDataLoading] = useState(true); // true until face data fetch resolves
+  const [faceLoadError, setFaceLoadError] = useState(null);
+
   const cameraRef = useRef(null);
   const currentFaceRef = useRef(null);
   const lastDetectionTimeRef = useRef(Date.now());
   const slowTimerRef = useRef(null);
+  const consecutiveRef = useRef(0);
 
   const showToast = (message, type = 'success') =>
     setToast({ visible: true, message, type });
 
+  // ── Load stored face data on mount ──────────────────────────────────────────
   useEffect(() => {
     if (!user?.id) return;
-    hasFaceData(user.id).then((hasData) => {
-      if (!hasData) {
+    setFaceDataLoading(true);
+    getFaceData(user.id).then((data) => {
+      setFaceDataLoading(false);
+      if (!data) {
         Alert.alert(
           'Face Not Registered',
           'Register your face in Settings before checking in.',
@@ -59,10 +80,28 @@ export default function FaceVerificationScreen({ navigation, route }) {
             { text: 'Cancel', style: 'cancel', onPress: () => navigation.goBack() },
           ]
         );
+        return;
       }
-    });
+      if (data.needsReRegistration) {
+        Alert.alert(
+          'Re-registration Required',
+          'Your face data is in an outdated format. Please re-register your face.',
+          [
+            { text: 'Re-register Now', onPress: () => navigation.replace('FaceRegistration') },
+            { text: 'Cancel', style: 'cancel', onPress: () => navigation.goBack() },
+          ]
+        );
+        return;
+      }
+      if (data.features?.__v !== 2) {
+        setFaceLoadError('outdated');
+        return;
+      }
+      setStoredFaceData(data);
+    }).catch(() => setFaceDataLoading(false));
   }, [user, navigation]);
 
+  // ── "No face detected" hint after 7s ────────────────────────────────────────
   useEffect(() => {
     if (isWeb || faceDetected || isProcessing) return;
     const interval = setInterval(() => {
@@ -73,6 +112,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
     return () => clearInterval(interval);
   }, [faceDetected, isProcessing]);
 
+  // ── Real-time face detection + similarity check ──────────────────────────────
   const handleFacesDetected = ({ faces }) => {
     if (isProcessing) return;
     lastDetectionTimeRef.current = Date.now();
@@ -84,6 +124,10 @@ export default function FaceVerificationScreen({ navigation, route }) {
       setFaceBounds(null);
       currentFaceRef.current = null;
       setLightingQuality('unknown');
+      // Reset consecutive counter
+      consecutiveRef.current = 0;
+      setConsecutiveMatches(0);
+      setFaceMatchConfirmed(false);
       return;
     }
     if (faces.length > 1) {
@@ -91,6 +135,9 @@ export default function FaceVerificationScreen({ navigation, route }) {
       setFaceMessage('Multiple faces detected — one person only');
       setFaceBounds(null);
       currentFaceRef.current = null;
+      consecutiveRef.current = 0;
+      setConsecutiveMatches(0);
+      setFaceMatchConfirmed(false);
       return;
     }
 
@@ -102,20 +149,65 @@ export default function FaceVerificationScreen({ navigation, route }) {
     setLightingQuality(hasLandmarks ? 'good' : 'poor');
 
     const validation = validateFacePosition(face);
-    if (validation.valid) {
-      setFaceDetected(true);
-      setFaceMessage('✓ Face detected — tap Verify');
-    } else {
+    if (!validation.valid) {
       setFaceDetected(false);
       setFaceMessage(validation.message);
       setSimilarity(0);
+      consecutiveRef.current = 0;
+      setConsecutiveMatches(0);
+      setFaceMatchConfirmed(false);
+      return;
+    }
+
+    setFaceDetected(true);
+
+    // ── Real-time similarity against stored face ─────────────────────────────
+    if (storedFaceData?.features) {
+      const currentFeatures = extractFaceFeatures(face);
+      if (currentFeatures && currentFeatures.__v === 2) {
+        const sim = calculateSimilarity(storedFaceData.features, currentFeatures);
+        setSimilarity(sim);
+
+        if (sim >= SIMILARITY_THRESHOLD) {
+          consecutiveRef.current += 1;
+          const count = consecutiveRef.current;
+          setConsecutiveMatches(count);
+
+          if (count >= CONSECUTIVE_MATCHES) {
+            setFaceMatchConfirmed(true);
+            setFaceMessage(`✓ Identity confirmed — tap to ${mode === 'checkin' ? 'check in' : 'check out'}`);
+          } else {
+            setFaceMessage(`Hold still... (${count}/${CONSECUTIVE_MATCHES})`);
+          }
+        } else {
+          consecutiveRef.current = 0;
+          setConsecutiveMatches(0);
+          setFaceMatchConfirmed(false);
+          if (sim > 0.5) {
+            setFaceMessage(`Partial match (${Math.round(sim * 100)}%) — adjust position`);
+          } else {
+            setFaceMessage('Face not recognized — ensure good lighting');
+          }
+        }
+      } else {
+        // Could not extract features (no landmarks)
+        setFaceMessage('✓ Face detected — tap Verify');
+        consecutiveRef.current = 0;
+        setFaceMatchConfirmed(false);
+      }
+    } else {
+      // No stored data loaded yet (or web)
+      setFaceMessage(isWeb ? '✓ Ready — click the button below' : '✓ Face detected — tap Verify');
     }
   };
 
+  // ── Check-in / Check-out API calls ──────────────────────────────────────────
   const performCheckIn = async () => {
     try {
       await checkIn(routeLocation);
-      await storeCheckIn();
+      // Capture SSID at check-in time for WiFi-aware auto-checkout
+      const wifiInfo = await getWifiInfo();
+      await storeCheckIn(wifiInfo?.ssid || null);
       clearTimeout(slowTimerRef.current);
       setSlowRequest(false);
       showToast('Check-in successful!', 'success');
@@ -144,51 +236,72 @@ export default function FaceVerificationScreen({ navigation, route }) {
     }
   };
 
+  // ── Main verify button handler ───────────────────────────────────────────────
   const verifyAndProceed = async () => {
     setIsProcessing(true);
     setSlowRequest(false);
     slowTimerRef.current = setTimeout(() => setSlowRequest(true), 6000);
 
+    // Web: skip face check, proceed directly
     if (isWeb) {
       if (mode === 'checkin') await performCheckIn();
       else await performCheckOut();
       return;
     }
 
-    if (!cameraRef.current || !faceDetected || !currentFaceRef.current) {
+    if (!faceDetected && !faceMatchConfirmed) {
       clearTimeout(slowTimerRef.current);
       showToast('Position your face correctly first', 'error');
       setIsProcessing(false);
       return;
     }
 
-    try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: true });
-      const face = currentFaceRef.current;
-      const faceFeatures = extractFaceFeatures(face);
+    // If no stored face data (shouldn't happen due to useEffect guard, but be safe)
+    if (!storedFaceData && !isWeb) {
+      clearTimeout(slowTimerRef.current);
+      showToast('Face data not loaded. Please try again.', 'error');
+      setIsProcessing(false);
+      return;
+    }
 
-      if (!faceFeatures) {
+    // If face match was confirmed via consecutive frames, proceed directly
+    if (faceMatchConfirmed || !storedFaceData) {
+      if (mode === 'checkin') await performCheckIn();
+      else await performCheckOut();
+      return;
+    }
+
+    // Fallback: take photo and do a final one-shot comparison
+    if (!cameraRef.current || !currentFaceRef.current) {
+      clearTimeout(slowTimerRef.current);
+      showToast('Camera not ready. Try again.', 'error');
+      setIsProcessing(false);
+      return;
+    }
+
+    try {
+      const face = currentFaceRef.current;
+      const features = extractFaceFeatures(face);
+
+      if (!features || features.__v !== 2) {
         clearTimeout(slowTimerRef.current);
         showToast('Could not extract face features. Try again.', 'error');
         setIsProcessing(false);
         return;
       }
 
-      const result = await verifyFace(user.id, faceFeatures, 0.75, photo.uri);
-      setSimilarity(result.similarity);
+      const sim = calculateSimilarity(storedFaceData.features, features);
+      setSimilarity(sim);
 
-      if (!result.success) {
+      if (sim < SIMILARITY_THRESHOLD) {
         clearTimeout(slowTimerRef.current);
-        showToast(result.message || 'Face not recognized. Try again.', 'error');
+        showToast(
+          sim > 0.6
+            ? `Low match (${Math.round(sim * 100)}%). Try better lighting.`
+            : 'Face does not match registered data.',
+          'error'
+        );
         setIsProcessing(false);
-        return;
-      }
-
-      if (result.isNewRegistration) {
-        clearTimeout(slowTimerRef.current);
-        showToast('Face registered! Tap again to check in.', 'success');
-        setIsProcessing(false);
-        setTimeout(() => navigation.goBack(), 1800);
         return;
       }
 
@@ -201,6 +314,19 @@ export default function FaceVerificationScreen({ navigation, route }) {
     }
   };
 
+  // ── Face data still loading ──────────────────────────────────────────────────
+  if (faceDataLoading && !isWeb) {
+    return (
+      <LinearGradient colors={grad.screen} style={s.container}>
+        <View style={s.centered}>
+          <ActivityIndicator size="large" color={g.accent} />
+          <Text style={[s.hint, { color: g.textMuted, marginTop: 12 }]}>Loading face data…</Text>
+        </View>
+      </LinearGradient>
+    );
+  }
+
+  // ── Permission / error states ────────────────────────────────────────────────
   if (!permission) {
     return (
       <LinearGradient colors={grad.screen} style={s.container}>
@@ -232,7 +358,14 @@ export default function FaceVerificationScreen({ navigation, route }) {
     );
   }
 
-  const btnReady = isWeb || faceDetected;
+  // Button active when:
+  //   • web (no camera verification needed), OR
+  //   • face match confirmed via consecutive frames (primary path), OR
+  //   • face is detected AND no stored data exists (allow check-in to proceed so user can register)
+  const btnReady = isWeb
+    || faceMatchConfirmed
+    || (!faceDataLoading && faceDetected && !storedFaceData && !faceLoadError);
+  const matchPct = Math.round(similarity * 100);
 
   return (
     <LinearGradient colors={grad.screen} style={s.container}>
@@ -251,7 +384,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
           <Text style={[s.hint, { color: g.textMuted }]}>
             {isWeb
               ? 'Camera visible for record — click verify to proceed'
-              : `Verify your face to ${mode === 'checkin' ? 'check in' : 'check out'}`}
+              : `Hold your face in frame — ${CONSECUTIVE_MATCHES} consistent matches required`}
           </Text>
         </View>
 
@@ -259,7 +392,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
         <View style={[s.camWrap, {
           width: CAMERA_SIZE,
           height: CAMERA_SIZE,
-          borderColor: btnReady ? g.mint : g.coral,
+          borderColor: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : g.coral,
         }]}>
           <CameraView
             ref={cameraRef}
@@ -270,17 +403,17 @@ export default function FaceVerificationScreen({ navigation, route }) {
               mode: 'fast',
               detectLandmarks: true,
               runClassifications: true,
-              minDetectionInterval: 150,
+              minDetectionInterval: 100,
               tracking: true,
             }}
           />
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            <View style={[s.corner, s.tl, { borderColor: btnReady ? g.mint : g.coral }]} />
-            <View style={[s.corner, s.tr, { borderColor: btnReady ? g.mint : g.coral }]} />
-            <View style={[s.corner, s.bl, { borderColor: btnReady ? g.mint : g.coral }]} />
-            <View style={[s.corner, s.br, { borderColor: btnReady ? g.mint : g.coral }]} />
+            <View style={[s.corner, s.tl, { borderColor: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : g.coral }]} />
+            <View style={[s.corner, s.tr, { borderColor: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : g.coral }]} />
+            <View style={[s.corner, s.bl, { borderColor: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : g.coral }]} />
+            <View style={[s.corner, s.br, { borderColor: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : g.coral }]} />
             {!isWeb && (
-              <View style={[s.oval, { borderColor: faceDetected ? g.mint : 'rgba(255,255,255,0.3)' }]} />
+              <View style={[s.oval, { borderColor: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : 'rgba(255,255,255,0.3)' }]} />
             )}
             {faceBounds && (
               <View style={[s.bbox, {
@@ -288,7 +421,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
                 top: faceBounds.origin.y,
                 width: faceBounds.size.width,
                 height: faceBounds.size.height,
-                borderColor: faceDetected ? g.mint : g.coral,
+                borderColor: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : g.coral,
               }]} />
             )}
             {!isWeb && (
@@ -300,14 +433,31 @@ export default function FaceVerificationScreen({ navigation, route }) {
                 </Text>
               </View>
             )}
+            {/* Consecutive match indicator */}
+            {consecutiveMatches > 0 && !faceMatchConfirmed && (
+              <View style={[s.matchPill, { backgroundColor: 'rgba(139,124,255,0.85)' }]}>
+                <Text style={s.matchText}>{consecutiveMatches}/{CONSECUTIVE_MATCHES}</Text>
+              </View>
+            )}
+            {faceMatchConfirmed && (
+              <View style={[s.matchPill, { backgroundColor: 'rgba(62,232,199,0.9)' }]}>
+                <Text style={[s.matchText, { color: '#000' }]}>✓ Confirmed</Text>
+              </View>
+            )}
           </View>
         </View>
 
         {/* Status */}
-        <View style={[s.status, { backgroundColor: btnReady ? g.mintSoft : g.coralSoft }]}>
-          <Text style={[s.statusText, { color: btnReady ? g.mint : g.coral }]}>{faceMessage}</Text>
-          {similarity > 0 && (
-            <Text style={[s.simText, { color: g.textMuted }]}>Match: {Math.round(similarity * 100)}%</Text>
+        <View style={[s.status, {
+          backgroundColor: faceMatchConfirmed ? g.mintSoft : faceDetected ? g.accentSoft : g.coralSoft,
+        }]}>
+          <Text style={[s.statusText, {
+            color: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : g.coral,
+          }]}>{faceMessage}</Text>
+          {similarity > 0 && !isWeb && (
+            <Text style={[s.simText, { color: g.textMuted }]}>
+              Match: {matchPct}% {matchPct >= 82 ? '✓' : matchPct >= 60 ? '~' : '✗'}
+            </Text>
           )}
         </View>
 
@@ -316,7 +466,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
           <View style={[s.slowBanner, { backgroundColor: g.accentSoft, borderColor: g.accent }]}>
             <ActivityIndicator size="small" color={g.accent} style={{ marginRight: 8 }} />
             <Text style={[s.slowText, { color: g.accent }]}>
-              Server waking up... may take up to 30s on first request
+              Server waking up… may take up to 30s on first request
             </Text>
           </View>
         )}
@@ -363,21 +513,13 @@ const s = StyleSheet.create({
   title: { fontSize: 26, fontWeight: '900', marginBottom: 6 },
   hint: { fontSize: 13, lineHeight: 20 },
   camWrap: {
-    alignSelf: 'center',
-    borderRadius: 20,
-    borderWidth: 2,
-    overflow: 'hidden',
-    marginBottom: 16,
+    alignSelf: 'center', borderRadius: 20, borderWidth: 2.5,
+    overflow: 'hidden', marginBottom: 16,
   },
   oval: {
-    position: 'absolute',
-    alignSelf: 'center',
-    top: '10%',
-    width: '55%',
-    height: '75%',
-    borderRadius: 200,
-    borderWidth: 2,
-    borderStyle: 'dashed',
+    position: 'absolute', alignSelf: 'center',
+    top: '10%', width: '55%', height: '75%',
+    borderRadius: 200, borderWidth: 2, borderStyle: 'dashed',
   },
   bbox: { position: 'absolute', borderWidth: 2, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)' },
   corner: { position: 'absolute', width: CORNER, height: CORNER },
@@ -387,17 +529,14 @@ const s = StyleSheet.create({
   br: { bottom: 14, right: 14, borderBottomWidth: CW, borderRightWidth: CW, borderBottomRightRadius: 6 },
   lightPill: { position: 'absolute', top: 12, right: 12, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
   lightText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  matchPill: { position: 'absolute', top: 12, left: 12, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
+  matchText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   status: { borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, marginBottom: 12, alignItems: 'center' },
   statusText: { fontSize: 14, fontWeight: '700', textAlign: 'center' },
   simText: { fontSize: 12, marginTop: 4 },
   slowBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    marginBottom: 12,
-    borderWidth: 1,
+    flexDirection: 'row', alignItems: 'center',
+    borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, marginBottom: 12, borderWidth: 1,
   },
   slowText: { fontSize: 12, fontWeight: '600', flex: 1 },
   btn: { borderRadius: 16, paddingVertical: 17, alignItems: 'center', marginBottom: 10 },

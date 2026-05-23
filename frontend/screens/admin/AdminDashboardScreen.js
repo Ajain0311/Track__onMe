@@ -8,7 +8,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import useThemeStore from '../../store/themeStore';
 import useAuthStore from '../../store/authStore';
-import { adminGetStats, getApiErrorMessage } from '../../services/api';
+import { adminGetStats, adminGetLocationRequests, getApiErrorMessage } from '../../services/api';
 
 const StatCard = ({ label, value, color, icon, g, grad, anim }) => (
   <Animated.View style={[
@@ -29,15 +29,21 @@ export default function AdminDashboardScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [pendingRequests, setPendingRequests] = useState(0);
   const anims = useRef([0, 1, 2, 3].map(() => new Animated.Value(0))).current;
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const res = await adminGetStats();
-      setStats(res.data);
-    } catch (err) {
-      setError(getApiErrorMessage(err));
+      const [statsRes, reqRes] = await Promise.allSettled([
+        adminGetStats(),
+        adminGetLocationRequests('pending'),
+      ]);
+      if (statsRes.status === 'fulfilled') setStats(statsRes.value.data);
+      else setError(getApiErrorMessage(statsRes.reason));
+      if (reqRes.status === 'fulfilled') {
+        setPendingRequests(reqRes.value.data.pendingCount || reqRes.value.data.requests?.length || 0);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -125,6 +131,30 @@ export default function AdminDashboardScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
+            {/* Location Requests action */}
+            <TouchableOpacity
+              style={[st.requestsCard, {
+                backgroundColor: pendingRequests > 0 ? 'rgba(255,179,71,0.08)' : g.glass,
+                borderColor: pendingRequests > 0 ? 'rgba(255,179,71,0.45)' : g.border,
+              }]}
+              onPress={() => navigation.navigate('AdminLocationRequests')}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text style={{ fontSize: 28 }}>📬</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[st.actionLabel, { color: g.text }]}>Location Requests</Text>
+                  <Text style={[st.actionSub, { color: g.textMuted }]}>Review user location submissions</Text>
+                </View>
+                {pendingRequests > 0 && (
+                  <View style={[st.pendingBadge, { backgroundColor: '#ffb347' }]}>
+                    <Text style={{ color: '#000', fontSize: 12, fontWeight: '900' }}>{pendingRequests}</Text>
+                  </View>
+                )}
+                <Text style={{ color: g.textDim, fontSize: 20 }}>›</Text>
+              </View>
+            </TouchableOpacity>
+
             {/* Info card */}
             <LinearGradient colors={grad.card} style={[st.infoCard, { borderColor: g.border }]}>
               <Text style={[st.infoTitle, { color: g.text }]}>About Admin Mode</Text>
@@ -163,4 +193,6 @@ const st = StyleSheet.create({
   infoCard: { borderRadius: 18, padding: 18, borderWidth: 1 },
   infoTitle: { fontSize: 15, fontWeight: '800', marginBottom: 10 },
   infoBody: { fontSize: 13, lineHeight: 22 },
+  requestsCard: { borderRadius: 18, padding: 16, borderWidth: 1, marginBottom: 20 },
+  pendingBadge: { minWidth: 26, height: 26, borderRadius: 13, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
 });

@@ -273,6 +273,26 @@ export default function SettingsScreen({ navigation }) {
           </LinearGradient>
         </View>
 
+        {/* Location Requests */}
+        <View style={st.section}>
+          <Text style={[st.sectionTitle, { color: g.textMuted }]}>LOCATIONS</Text>
+          <LinearGradient colors={grad.card} style={[st.sectionCard, { borderColor: g.border }]}>
+            <SettingRow
+              icon="📬"
+              title="My Location Requests"
+              subtitle="View and manage your location submissions"
+              onPress={() => navigation.navigate('MyLocationRequests')}
+            />
+            <View style={[st.divider, { backgroundColor: g.border }]} />
+            <SettingRow
+              icon="📍"
+              title="Request a New Location"
+              subtitle="Submit a work location for admin approval"
+              onPress={() => navigation.navigate('LocationRequest')}
+            />
+          </LinearGradient>
+        </View>
+
         {/* Data management */}
         <View style={st.section}>
           <Text style={[st.sectionTitle, { color: g.textMuted }]}>DATA MANAGEMENT</Text>

@@ -1,4 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+// screens/FaceRegistrationScreen.js
+// Multi-sample face registration — collects 5 valid frames and averages
+// the normalized feature ratios for a robust reference template.
+
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator,
   Dimensions, Platform, ScrollView, Image,
@@ -12,6 +16,7 @@ import {
   processDetectedFace,
   validateFacePosition,
   extractFaceFeatures,
+  averageFeatures,
   saveFaceData,
   hasFaceData,
 } from '../services/faceRecognitionService';
@@ -20,11 +25,16 @@ const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const CAMERA_SIZE = Math.min(screenWidth - 48, screenHeight * 0.42, 380);
 const isWeb = Platform.OS === 'web';
 
+const REQUIRED_SAMPLES = 5;         // frames to collect for averaging
+const SAMPLE_INTERVAL_MS = 700;     // ms between auto-collected samples
+
 export default function FaceRegistrationScreen({ navigation }) {
   const { colors: g, gradients: grad } = useThemeStore();
   const { user } = useAuthStore();
   const [permission, requestPermission] = useCameraPermissions();
-  const [stage, setStage] = useState('camera'); // 'camera' | 'preview'
+
+  // Stage: 'camera' → 'preview' → (save)
+  const [stage, setStage] = useState('camera');
   const [isRegistering, setIsRegistering] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
   const [faceMessage, setFaceMessage] = useState(
@@ -32,16 +42,23 @@ export default function FaceRegistrationScreen({ navigation }) {
   );
   const [faceBounds, setFaceBounds] = useState(null);
   const [lightingQuality, setLightingQuality] = useState('unknown');
+
+  // Multi-sample collection
+  const [sampleCount, setSampleCount] = useState(0);
+  const [isCollecting, setIsCollecting] = useState(false);
+
   const [capturedUri, setCapturedUri] = useState(null);
   const [capturedFeatures, setCapturedFeatures] = useState(null);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
+
   const cameraRef = useRef(null);
   const currentFaceRef = useRef(null);
   const lastDetectionRef = useRef(Date.now());
+  const samplesRef = useRef([]);
+  const sampleTimerRef = useRef(null);
+  const isCollectingRef = useRef(false);
 
-  const showToast = (message, type = 'success') => {
-    setToast({ visible: true, message, type });
-  };
+  const showToast = (message, type = 'success') => setToast({ visible: true, message, type });
 
   useEffect(() => {
     if (!user?.id) return;
@@ -49,7 +66,7 @@ export default function FaceRegistrationScreen({ navigation }) {
       if (hasData) {
         Alert.alert(
           'Face Already Registered',
-          'Re-register to update your face data.',
+          'Re-registering will replace your existing face data.',
           [
             { text: 'Cancel', style: 'cancel', onPress: () => navigation.goBack() },
             { text: 'Re-register' },
@@ -59,7 +76,7 @@ export default function FaceRegistrationScreen({ navigation }) {
     });
   }, [user, navigation]);
 
-  // Timeout: if no face detected after 7s, show hint
+  // Timeout hint if no face detected
   useEffect(() => {
     if (isWeb || stage !== 'camera') return;
     const interval = setInterval(() => {
@@ -70,6 +87,71 @@ export default function FaceRegistrationScreen({ navigation }) {
     return () => clearInterval(interval);
   }, [faceDetected, stage]);
 
+  // ── Auto-collect samples when face is valid ─────────────────────────────────
+  const startCollecting = useCallback(() => {
+    if (isCollectingRef.current) return;
+    isCollectingRef.current = true;
+    setIsCollecting(true);
+
+    const collectSample = () => {
+      if (!isCollectingRef.current) return;
+      const face = currentFaceRef.current;
+      if (!face) return;
+      const validation = validateFacePosition(face);
+      if (!validation.valid) return;
+
+      const features = extractFaceFeatures(face);
+      if (features) {
+        samplesRef.current.push(features);
+        const count = samplesRef.current.length;
+        setSampleCount(count);
+        console.log(`[Registration] Sample ${count}/${REQUIRED_SAMPLES} collected`);
+
+        if (count >= REQUIRED_SAMPLES) {
+          stopCollecting();
+          finalizeCapture();
+        }
+      }
+    };
+
+    sampleTimerRef.current = setInterval(collectSample, SAMPLE_INTERVAL_MS);
+  }, []);
+
+  const stopCollecting = () => {
+    isCollectingRef.current = false;
+    setIsCollecting(false);
+    if (sampleTimerRef.current) {
+      clearInterval(sampleTimerRef.current);
+      sampleTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => () => stopCollecting(), []); // cleanup on unmount
+
+  const finalizeCapture = async () => {
+    // Average all collected samples
+    const averaged = averageFeatures(samplesRef.current);
+    if (!averaged) {
+      showToast('Could not build face profile. Try again.', 'error');
+      resetCamera();
+      return;
+    }
+
+    // Take one photo for the preview image
+    let photoUri = null;
+    try {
+      if (cameraRef.current) {
+        const photo = await cameraRef.current.takePictureAsync({ quality: 0.8, base64: false });
+        photoUri = photo.uri;
+      }
+    } catch (_) {/* ignore photo error — features are what matter */}
+
+    setCapturedFeatures(averaged);
+    setCapturedUri(photoUri);
+    setStage('preview');
+  };
+
+  // ── Face detection handler ──────────────────────────────────────────────────
   const handleFacesDetected = ({ faces }) => {
     if (stage !== 'camera') return;
     lastDetectionRef.current = Date.now();
@@ -80,13 +162,15 @@ export default function FaceRegistrationScreen({ navigation }) {
       setFaceBounds(null);
       currentFaceRef.current = null;
       setLightingQuality('unknown');
+      if (isCollectingRef.current) stopCollecting();
       return;
     }
     if (faces.length > 1) {
       setFaceDetected(false);
-      setFaceMessage('Multiple faces — only one person please');
+      setFaceMessage('Multiple faces detected — one person only');
       setFaceBounds(null);
       currentFaceRef.current = null;
+      if (isCollectingRef.current) stopCollecting();
       return;
     }
 
@@ -100,30 +184,41 @@ export default function FaceRegistrationScreen({ navigation }) {
     const validation = validateFacePosition(face);
     if (validation.valid) {
       setFaceDetected(true);
-      setFaceMessage('✓ Hold still — tap Capture');
+      if (isCollectingRef.current) {
+        setFaceMessage(`Collecting... ${sampleCount}/${REQUIRED_SAMPLES} — hold still`);
+      } else {
+        setFaceMessage('✓ Face detected — tap Capture to begin');
+      }
     } else {
       setFaceDetected(false);
       setFaceMessage(validation.message);
+      if (isCollectingRef.current) stopCollecting();
     }
   };
 
+  // ── Manual capture button ───────────────────────────────────────────────────
   const handleCapture = async () => {
-    if (!cameraRef.current) return;
-    try {
-      const photo = await cameraRef.current.takePictureAsync({ quality: 0.85, base64: false });
-      let features = null;
-      if (!isWeb && currentFaceRef.current) {
-        features = extractFaceFeatures(currentFaceRef.current);
-      }
-      setCapturedUri(photo.uri);
-      setCapturedFeatures(features);
+    if (isWeb) {
+      // On web — simulate with no face data
+      setCapturedFeatures({ __v: 2, ratios: {}, sampleCount: 0 });
+      setCapturedUri(null);
       setStage('preview');
-    } catch (err) {
-      showToast('Could not capture photo. Try again.', 'error');
+      return;
     }
+    if (!faceDetected || !currentFaceRef.current) {
+      showToast('Position your face correctly first', 'error');
+      return;
+    }
+    // Reset sample buffer and start collecting
+    samplesRef.current = [];
+    setSampleCount(0);
+    startCollecting();
   };
 
   const handleRetake = () => {
+    stopCollecting();
+    samplesRef.current = [];
+    setSampleCount(0);
     setCapturedUri(null);
     setCapturedFeatures(null);
     setStage('camera');
@@ -132,19 +227,33 @@ export default function FaceRegistrationScreen({ navigation }) {
     setFaceMessage(isWeb ? 'Ready — click Capture when ready' : 'Position your face in the oval');
   };
 
+  const resetCamera = () => {
+    stopCollecting();
+    samplesRef.current = [];
+    setSampleCount(0);
+    setFaceDetected(false);
+    setStage('camera');
+    setFaceMessage('Position your face in the oval');
+  };
+
   const handleSaveRegistration = async () => {
     setIsRegistering(true);
     try {
-      await saveFaceData(user.id, capturedFeatures || {}, capturedUri);
+      if (!capturedFeatures || capturedFeatures.__v !== 2) {
+        showToast('Invalid face data. Please retake.', 'error');
+        setIsRegistering(false);
+        return;
+      }
+      await saveFaceData(user.id, capturedFeatures, capturedUri);
       showToast('Face registered successfully!', 'success');
       setTimeout(() => navigation.goBack(), 1500);
     } catch (err) {
       showToast('Failed to save face data. Try again.', 'error');
-    } finally {
       setIsRegistering(false);
     }
   };
 
+  // ── Permission gates ────────────────────────────────────────────────────────
   if (!permission) {
     return (
       <LinearGradient colors={grad.screen} style={styles.container}>
@@ -176,6 +285,9 @@ export default function FaceRegistrationScreen({ navigation }) {
     );
   }
 
+  // ── Progress bar for sample collection ─────────────────────────────────────
+  const progressPct = Math.min(sampleCount / REQUIRED_SAMPLES, 1);
+
   return (
     <LinearGradient colors={grad.screen} style={styles.container}>
       <Toast
@@ -191,12 +303,12 @@ export default function FaceRegistrationScreen({ navigation }) {
       >
         <View style={styles.header}>
           <Text style={[styles.title, { color: g.text }]}>
-            {stage === 'preview' ? 'Confirm Your Photo' : 'Register Your Face'}
+            {stage === 'preview' ? 'Confirm Registration' : 'Register Your Face'}
           </Text>
           <Text style={[styles.hint, { color: g.textMuted }]}>
             {stage === 'preview'
-              ? 'Does this look good? Save or retake.'
-              : 'This photo is used to verify your identity at check-in'}
+              ? `${capturedFeatures?.sampleCount || 0} samples captured — save to register`
+              : 'We collect 5 frames for a robust match. Hold still in good lighting.'}
           </Text>
         </View>
 
@@ -209,11 +321,11 @@ export default function FaceRegistrationScreen({ navigation }) {
 
         {stage === 'camera' ? (
           <>
-            {/* Camera */}
+            {/* Camera view */}
             <View style={[styles.camWrap, {
               width: CAMERA_SIZE,
               height: CAMERA_SIZE,
-              borderColor: faceDetected || isWeb ? g.mint : g.coral,
+              borderColor: (faceDetected || isWeb) ? (isCollecting ? g.accent : g.mint) : g.coral,
             }]}>
               <CameraView
                 ref={cameraRef}
@@ -228,18 +340,14 @@ export default function FaceRegistrationScreen({ navigation }) {
                   tracking: true,
                 }}
               />
-              {/* Overlay */}
               <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                {/* Corner brackets */}
-                <View style={[styles.corner, styles.tl, { borderColor: faceDetected || isWeb ? g.mint : g.coral }]} />
-                <View style={[styles.corner, styles.tr, { borderColor: faceDetected || isWeb ? g.mint : g.coral }]} />
-                <View style={[styles.corner, styles.bl, { borderColor: faceDetected || isWeb ? g.mint : g.coral }]} />
-                <View style={[styles.corner, styles.br, { borderColor: faceDetected || isWeb ? g.mint : g.coral }]} />
-                {/* Oval guide */}
+                <View style={[styles.corner, styles.tl, { borderColor: (faceDetected || isWeb) ? g.mint : g.coral }]} />
+                <View style={[styles.corner, styles.tr, { borderColor: (faceDetected || isWeb) ? g.mint : g.coral }]} />
+                <View style={[styles.corner, styles.bl, { borderColor: (faceDetected || isWeb) ? g.mint : g.coral }]} />
+                <View style={[styles.corner, styles.br, { borderColor: (faceDetected || isWeb) ? g.mint : g.coral }]} />
                 {!isWeb && (
                   <View style={[styles.oval, { borderColor: faceDetected ? g.mint : 'rgba(255,255,255,0.3)' }]} />
                 )}
-                {/* Bounding box */}
                 {faceBounds && (
                   <View style={[styles.bbox, {
                     left: faceBounds.origin.x,
@@ -249,7 +357,6 @@ export default function FaceRegistrationScreen({ navigation }) {
                     borderColor: faceDetected ? g.mint : g.coral,
                   }]} />
                 )}
-                {/* Lighting pill */}
                 {!isWeb && (
                   <View style={[styles.lightPill, {
                     backgroundColor: lightingQuality === 'good' ? 'rgba(29,185,138,0.85)' : 'rgba(0,0,0,0.55)',
@@ -259,47 +366,94 @@ export default function FaceRegistrationScreen({ navigation }) {
                     </Text>
                   </View>
                 )}
+                {/* Sample count overlay */}
+                {isCollecting && (
+                  <View style={styles.sampleOverlay}>
+                    <Text style={styles.sampleCount}>{sampleCount}/{REQUIRED_SAMPLES}</Text>
+                  </View>
+                )}
               </View>
             </View>
 
-            {/* Status message */}
+            {/* Sample progress bar */}
+            {(isCollecting || sampleCount > 0) && (
+              <View style={[styles.progressWrap, { backgroundColor: g.glass, borderColor: g.border }]}>
+                <View style={[styles.progressBar, {
+                  width: `${progressPct * 100}%`,
+                  backgroundColor: sampleCount >= REQUIRED_SAMPLES ? g.mint : g.accent,
+                }]} />
+              </View>
+            )}
+
+            {/* Status */}
             <View style={[styles.status, { backgroundColor: (faceDetected || isWeb) ? g.mintSoft : g.coralSoft }]}>
               <Text style={[styles.statusText, { color: (faceDetected || isWeb) ? g.mint : g.coral }]}>
-                {faceMessage}
+                {isCollecting ? `Collecting sample ${sampleCount}/${REQUIRED_SAMPLES} — hold still` : faceMessage}
               </Text>
             </View>
 
             {!isWeb && (
               <View style={styles.tips}>
                 <Text style={[styles.tipText, { color: g.textMuted }]}>
-                  Face the camera directly · Good lighting · One person only
+                  Face camera directly · Good lighting · One person only
                 </Text>
               </View>
             )}
 
             <TouchableOpacity
-              style={[styles.btn, { backgroundColor: (faceDetected || isWeb) ? g.mint : g.textDim, opacity: (faceDetected || isWeb) ? 1 : 0.5 }]}
+              style={[styles.btn, {
+                backgroundColor: (faceDetected || isWeb) && !isCollecting ? g.mint : g.textDim,
+                opacity: (faceDetected || isWeb) && !isCollecting ? 1 : 0.5,
+              }]}
               onPress={handleCapture}
-              disabled={(!faceDetected && !isWeb)}
+              disabled={(!faceDetected && !isWeb) || isCollecting}
             >
-              <Text style={styles.btnText}>📷  Capture Photo</Text>
+              {isCollecting
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={styles.btnText}>📷  Start Capture ({REQUIRED_SAMPLES} samples)</Text>}
             </TouchableOpacity>
           </>
         ) : (
           <>
             {/* Preview */}
-            <View style={[styles.previewWrap, { width: CAMERA_SIZE, height: CAMERA_SIZE, borderColor: g.mint }]}>
-              <Image source={{ uri: capturedUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-              {/* Corner brackets */}
-              <View style={[styles.corner, styles.tl, { borderColor: g.mint }]} />
-              <View style={[styles.corner, styles.tr, { borderColor: g.mint }]} />
-              <View style={[styles.corner, styles.bl, { borderColor: g.mint }]} />
-              <View style={[styles.corner, styles.br, { borderColor: g.mint }]} />
-            </View>
+            {capturedUri ? (
+              <View style={[styles.previewWrap, { width: CAMERA_SIZE, height: CAMERA_SIZE, borderColor: g.mint }]}>
+                <Image source={{ uri: capturedUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                <View style={[styles.corner, styles.tl, { borderColor: g.mint }]} />
+                <View style={[styles.corner, styles.tr, { borderColor: g.mint }]} />
+                <View style={[styles.corner, styles.bl, { borderColor: g.mint }]} />
+                <View style={[styles.corner, styles.br, { borderColor: g.mint }]} />
+              </View>
+            ) : (
+              <View style={[styles.previewWrap, {
+                width: CAMERA_SIZE, height: CAMERA_SIZE * 0.5,
+                borderColor: g.mint, alignItems: 'center', justifyContent: 'center',
+              }]}>
+                <Text style={{ fontSize: 48, marginBottom: 8 }}>✅</Text>
+                <Text style={[styles.hint, { color: g.mint, textAlign: 'center' }]}>
+                  {capturedFeatures?.sampleCount || 0} samples captured
+                </Text>
+              </View>
+            )}
 
-            <View style={[styles.status, { backgroundColor: g.mintSoft }]}>
-              <Text style={[styles.statusText, { color: g.mint }]}>✓ Photo captured — looks good?</Text>
-            </View>
+            {/* Registration quality summary */}
+            <LinearGradient
+              colors={['rgba(62,232,199,0.08)', 'rgba(62,232,199,0.02)']}
+              style={[styles.qualityCard, { borderColor: 'rgba(62,232,199,0.3)' }]}
+            >
+              <Text style={{ color: g.mint, fontWeight: '800', fontSize: 14, marginBottom: 6 }}>
+                ✓ Registration Quality
+              </Text>
+              <Text style={{ color: g.textMuted, fontSize: 12 }}>
+                • {capturedFeatures?.sampleCount || 0} face samples averaged
+              </Text>
+              <Text style={{ color: g.textMuted, fontSize: 12 }}>
+                • {Object.keys(capturedFeatures?.ratios || {}).length} facial measurements stored
+              </Text>
+              <Text style={{ color: g.textMuted, fontSize: 12 }}>
+                • Scale-invariant recognition active
+              </Text>
+            </LinearGradient>
 
             <TouchableOpacity
               style={[styles.btn, { backgroundColor: isRegistering ? g.textDim : g.mint }]}
@@ -316,7 +470,7 @@ export default function FaceRegistrationScreen({ navigation }) {
               onPress={handleRetake}
               disabled={isRegistering}
             >
-              <Text style={[styles.cancelText, { color: g.textMuted }]}>↺  Retake Photo</Text>
+              <Text style={[styles.cancelText, { color: g.textMuted }]}>↺  Retake</Text>
             </TouchableOpacity>
           </>
         )}
@@ -347,77 +501,45 @@ const styles = StyleSheet.create({
   stepDot: { width: 10, height: 10, borderRadius: 5 },
   stepLine: { flex: 1, height: 2, marginHorizontal: 6 },
   camWrap: {
-    alignSelf: 'center',
-    borderRadius: 20,
-    borderWidth: 2,
-    overflow: 'hidden',
-    marginBottom: 16,
+    alignSelf: 'center', borderRadius: 20, borderWidth: 2,
+    overflow: 'hidden', marginBottom: 12,
   },
   previewWrap: {
-    alignSelf: 'center',
-    borderRadius: 20,
-    borderWidth: 2,
-    overflow: 'hidden',
-    marginBottom: 16,
+    alignSelf: 'center', borderRadius: 20, borderWidth: 2,
+    overflow: 'hidden', marginBottom: 14,
   },
   oval: {
-    position: 'absolute',
-    alignSelf: 'center',
-    top: '10%',
-    width: '55%',
-    height: '75%',
-    borderRadius: 200,
-    borderWidth: 2,
-    borderStyle: 'dashed',
+    position: 'absolute', alignSelf: 'center',
+    top: '10%', width: '55%', height: '75%',
+    borderRadius: 200, borderWidth: 2, borderStyle: 'dashed',
   },
-  bbox: {
-    position: 'absolute',
-    borderWidth: 2,
-    borderRadius: 8,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  corner: {
-    position: 'absolute',
-    width: CORNER,
-    height: CORNER,
-    borderColor: '#fff',
-  },
+  bbox: { position: 'absolute', borderWidth: 2, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)' },
+  corner: { position: 'absolute', width: CORNER, height: CORNER },
   tl: { top: 14, left: 14, borderTopWidth: CORNER_W, borderLeftWidth: CORNER_W, borderTopLeftRadius: 6 },
   tr: { top: 14, right: 14, borderTopWidth: CORNER_W, borderRightWidth: CORNER_W, borderTopRightRadius: 6 },
   bl: { bottom: 14, left: 14, borderBottomWidth: CORNER_W, borderLeftWidth: CORNER_W, borderBottomLeftRadius: 6 },
   br: { bottom: 14, right: 14, borderBottomWidth: CORNER_W, borderRightWidth: CORNER_W, borderBottomRightRadius: 6 },
-  lightPill: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 14,
-  },
+  lightPill: { position: 'absolute', top: 12, right: 12, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
   lightText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  status: {
+  sampleOverlay: {
+    position: 'absolute', bottom: 12, left: 12,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    paddingHorizontal: 12, paddingVertical: 6,
     borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginBottom: 14,
-    alignItems: 'center',
   },
+  sampleCount: { color: '#fff', fontSize: 16, fontWeight: '900' },
+  progressWrap: {
+    height: 6, borderRadius: 3, borderWidth: 1,
+    marginBottom: 10, overflow: 'hidden', marginHorizontal: 4,
+  },
+  progressBar: { height: '100%', borderRadius: 3 },
+  status: { borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, marginBottom: 14, alignItems: 'center' },
   statusText: { fontSize: 14, fontWeight: '700', textAlign: 'center' },
-  tips: { marginBottom: 16 },
+  tips: { marginBottom: 14 },
   tipText: { fontSize: 12, textAlign: 'center', lineHeight: 18 },
-  btn: {
-    borderRadius: 16,
-    paddingVertical: 17,
-    alignItems: 'center',
-    marginBottom: 10,
-  },
+  qualityCard: { borderRadius: 14, padding: 14, marginBottom: 14, borderWidth: 1, gap: 4 },
+  btn: { borderRadius: 16, paddingVertical: 17, alignItems: 'center', marginBottom: 10 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  cancelBtn: {
-    borderRadius: 16,
-    paddingVertical: 14,
-    alignItems: 'center',
-    borderWidth: 1,
-    marginBottom: 8,
-  },
+  cancelBtn: { borderRadius: 16, paddingVertical: 14, alignItems: 'center', borderWidth: 1, marginBottom: 8 },
   cancelText: { fontSize: 14, fontWeight: '600' },
 });

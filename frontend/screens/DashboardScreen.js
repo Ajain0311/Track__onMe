@@ -121,7 +121,10 @@ export default function DashboardScreen({ navigation }) {
       const { isCheckedIn: checkedIn, activeSession: session } = res.data;
       setIsCheckedIn(checkedIn);
       setActiveSession(session);
-      if (checkedIn && !storeCheckedInRef.current) storeCheckIn();
+      // Sync local store with server state
+      // Note: when syncing from server (not a fresh check-in), we pass null SSID
+      // so the WiFi monitor won't auto-checkout this session
+      if (checkedIn && !storeCheckedInRef.current) storeCheckIn(null);
       else if (!checkedIn && storeCheckedInRef.current) await storeCheckOut();
     } catch (error) {
       setStatusError(getApiErrorMessage(error));

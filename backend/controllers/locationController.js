@@ -11,10 +11,19 @@ const {
 
 // ─── User-facing ──────────────────────────────────────────────────────────────
 
-// GET /api/locations  — active locations for the location picker
+const { getLocationsForUser } = require('../services/locationRequestService');
+
+// GET /api/locations — active global + user-specific locations for the location picker
 const listActive = async (req, res, next) => {
   try {
-    const locations = await getActiveLocations();
+    let locations;
+    try {
+      // Try user-aware query (requires 002 migration to be applied)
+      locations = await getLocationsForUser(req.user.id);
+    } catch {
+      // Fallback to global-only if new tables don't exist yet
+      locations = await getActiveLocations();
+    }
     return res.status(200).json({ locations });
   } catch (err) {
     next(err);
