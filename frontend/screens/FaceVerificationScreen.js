@@ -326,36 +326,38 @@ export default function FaceVerificationScreen({ navigation, route }) {
     );
   }
 
-  // ── Permission / error states ────────────────────────────────────────────────
-  if (!permission) {
-    return (
-      <LinearGradient colors={grad.screen} style={s.container}>
-        <View style={s.centered}>
-          <ActivityIndicator size="large" color={g.accent} />
-          <Text style={[s.hint, { color: g.textMuted, marginTop: 12 }]}>Loading camera...</Text>
-        </View>
-      </LinearGradient>
-    );
-  }
+  // ── Permission gates (native only — browser asks automatically when camera mounts)
+  if (!isWeb) {
+    if (!permission) {
+      return (
+        <LinearGradient colors={grad.screen} style={s.container}>
+          <View style={s.centered}>
+            <ActivityIndicator size="large" color={g.accent} />
+            <Text style={[s.hint, { color: g.textMuted, marginTop: 12 }]}>Loading camera...</Text>
+          </View>
+        </LinearGradient>
+      );
+    }
 
-  if (!permission.granted) {
-    return (
-      <LinearGradient colors={grad.screen} style={s.container}>
-        <View style={s.centered}>
-          <Text style={{ fontSize: 48, marginBottom: 16 }}>📷</Text>
-          <Text style={[s.title, { color: g.text, textAlign: 'center' }]}>Camera Access Needed</Text>
-          <Text style={[s.hint, { color: g.textMuted, textAlign: 'center', marginBottom: 28 }]}>
-            Camera permission is required to verify your face.
-          </Text>
-          <TouchableOpacity style={[s.btn, { backgroundColor: g.accent }]} onPress={requestPermission}>
-            <Text style={s.btnText}>Grant Permission</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[s.cancelBtn, { borderColor: g.border }]} onPress={() => navigation.goBack()}>
-            <Text style={[s.cancelText, { color: g.textMuted }]}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
-    );
+    if (!permission.granted) {
+      return (
+        <LinearGradient colors={grad.screen} style={s.container}>
+          <View style={s.centered}>
+            <Text style={{ fontSize: 48, marginBottom: 16 }}>📷</Text>
+            <Text style={[s.title, { color: g.text, textAlign: 'center' }]}>Camera Access Needed</Text>
+            <Text style={[s.hint, { color: g.textMuted, textAlign: 'center', marginBottom: 28 }]}>
+              Camera permission is required to verify your face.
+            </Text>
+            <TouchableOpacity style={[s.btn, { backgroundColor: g.accent }]} onPress={requestPermission}>
+              <Text style={s.btnText}>Grant Permission</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[s.cancelBtn, { borderColor: g.border }]} onPress={() => navigation.goBack()}>
+              <Text style={[s.cancelText, { color: g.textMuted }]}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+      );
+    }
   }
 
   // Button active when:

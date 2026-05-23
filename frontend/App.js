@@ -157,9 +157,21 @@ export default function App() {
     // Load user-specific attendance data from AsyncStorage
     useTimeStore.getState().setCurrentUser(user.id);
 
-    getMe().then((res) => {
-      setIsAdmin(res.data?.role === 'admin');
-    }).catch(() => setIsAdmin(false));
+    // Retry up to 4 times with backoff — Render cold-starts can take 30s+
+    const fetchRole = async () => {
+      const delays = [0, 5000, 10000, 15000];
+      for (let i = 0; i < delays.length; i++) {
+        if (delays[i]) await new Promise((r) => setTimeout(r, delays[i]));
+        try {
+          const res = await getMe();
+          setIsAdmin(res.data?.role === 'admin');
+          return; // success — stop retrying
+        } catch {
+          if (i === delays.length - 1) setIsAdmin(false); // all retries exhausted
+        }
+      }
+    };
+    fetchRole();
   }, [user?.id]);
 
   useEffect(() => {

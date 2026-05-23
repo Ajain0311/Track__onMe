@@ -253,36 +253,38 @@ export default function FaceRegistrationScreen({ navigation }) {
     }
   };
 
-  // ── Permission gates ────────────────────────────────────────────────────────
-  if (!permission) {
-    return (
-      <LinearGradient colors={grad.screen} style={styles.container}>
-        <View style={styles.centered}>
-          <ActivityIndicator size="large" color={g.accent} />
-          <Text style={[styles.hint, { color: g.textMuted, marginTop: 12 }]}>Loading camera...</Text>
-        </View>
-      </LinearGradient>
-    );
-  }
+  // ── Permission gates (native only — browser asks automatically when camera mounts)
+  if (!isWeb) {
+    if (!permission) {
+      return (
+        <LinearGradient colors={grad.screen} style={styles.container}>
+          <View style={styles.centered}>
+            <ActivityIndicator size="large" color={g.accent} />
+            <Text style={[styles.hint, { color: g.textMuted, marginTop: 12 }]}>Loading camera...</Text>
+          </View>
+        </LinearGradient>
+      );
+    }
 
-  if (!permission.granted) {
-    return (
-      <LinearGradient colors={grad.screen} style={styles.container}>
-        <View style={styles.centered}>
-          <Text style={{ fontSize: 48, marginBottom: 16 }}>📷</Text>
-          <Text style={[styles.title, { color: g.text, textAlign: 'center' }]}>Camera Access Needed</Text>
-          <Text style={[styles.hint, { color: g.textMuted, textAlign: 'center', marginBottom: 28 }]}>
-            Camera permission is required to register your face.
-          </Text>
-          <TouchableOpacity style={[styles.btn, { backgroundColor: g.accent }]} onPress={requestPermission}>
-            <Text style={styles.btnText}>Grant Permission</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.cancelBtn, { borderColor: g.border }]} onPress={() => navigation.goBack()}>
-            <Text style={[styles.cancelText, { color: g.textMuted }]}>Go Back</Text>
-          </TouchableOpacity>
-        </View>
-      </LinearGradient>
-    );
+    if (!permission.granted) {
+      return (
+        <LinearGradient colors={grad.screen} style={styles.container}>
+          <View style={styles.centered}>
+            <Text style={{ fontSize: 48, marginBottom: 16 }}>📷</Text>
+            <Text style={[styles.title, { color: g.text, textAlign: 'center' }]}>Camera Access Needed</Text>
+            <Text style={[styles.hint, { color: g.textMuted, textAlign: 'center', marginBottom: 28 }]}>
+              Camera permission is required to register your face.
+            </Text>
+            <TouchableOpacity style={[styles.btn, { backgroundColor: g.accent }]} onPress={requestPermission}>
+              <Text style={styles.btnText}>Grant Permission</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.cancelBtn, { borderColor: g.border }]} onPress={() => navigation.goBack()}>
+              <Text style={[styles.cancelText, { color: g.textMuted }]}>Go Back</Text>
+            </TouchableOpacity>
+          </View>
+        </LinearGradient>
+      );
+    }
   }
 
   // ── Progress bar for sample collection ─────────────────────────────────────
