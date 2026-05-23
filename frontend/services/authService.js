@@ -30,6 +30,20 @@ export const logOut = async () => {
 };
 
 /**
+ * Send a password-reset email. Supabase emails a magic link that, when
+ * clicked, signs the user in via a one-time token. On web we redirect to
+ * the current origin which Supabase will append the auth tokens to;
+ * the app's existing onAuthStateChange picks up the new session.
+ */
+export const sendPasswordReset = async (email) => {
+  const redirectTo = typeof window !== 'undefined' && window.location
+    ? window.location.origin
+    : undefined;
+  const { error } = await supabase.auth.resetPasswordForEmail(email, redirectTo ? { redirectTo } : undefined);
+  if (error) throw error;
+};
+
+/**
  * Get the current user's Supabase access token (JWT).
  * This is sent as a Bearer token to the backend.
  */

@@ -7,7 +7,7 @@ import {
   Platform, ScrollView, Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { signIn, signUp } from '../services/authService';
+import { signIn, signUp, sendPasswordReset } from '../services/authService';
 import useThemeStore from '../store/themeStore';
 
 const toAuthEmail = (input) => {
@@ -82,6 +82,23 @@ export default function LoginScreen() {
   const switchMode = () => {
     setIsLogin((v) => !v);
     setErrorMsg('');
+  };
+
+  const [resetSent, setResetSent] = useState(false);
+  const handleForgotPassword = async () => {
+    if (!email.trim()) { showError('Enter your email above first.'); return; }
+    const authEmail = toAuthEmail(email);
+    if (!authEmail.includes('@')) { showError('Email looks invalid.'); return; }
+    setLoading(true);
+    try {
+      await sendPasswordReset(authEmail);
+      setResetSent(true);
+      setErrorMsg('');
+    } catch (error) {
+      showError(getSupabaseErrorMessage(error));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const eyeBg = g.glass || 'rgba(255,255,255,0.07)';
@@ -212,6 +229,21 @@ export default function LoginScreen() {
                 </LinearGradient>
               </TouchableOpacity>
 
+              {/* Forgot password (only in login mode) */}
+              {isLogin && (
+                resetSent ? (
+                  <Text style={[ss.resetSentNote, { color: g.mint }]}>
+                    ✓ Reset link sent — check your inbox.
+                  </Text>
+                ) : (
+                  <TouchableOpacity onPress={handleForgotPassword} style={ss.forgotBtn} activeOpacity={0.7}>
+                    <Text style={[ss.forgotText, { color: g.textMuted }]}>
+                      Forgot password? <Text style={{ color: g.accent, fontWeight: '700' }}>Send reset link</Text>
+                    </Text>
+                  </TouchableOpacity>
+                )
+              )}
+
               {/* Switch mode */}
               <TouchableOpacity onPress={switchMode} style={ss.switchBtn} activeOpacity={0.7}>
                 <Text style={[ss.switchText, { color: g.textMuted }]}>
@@ -289,7 +321,11 @@ const ss = StyleSheet.create({
   btnGrad: { paddingVertical: 17, alignItems: 'center', justifyContent: 'center' },
   btnText: { color: '#fff', fontSize: 17, fontWeight: '800', letterSpacing: 0.3 },
 
-  switchBtn: { marginTop: 24, alignItems: 'center' },
+  forgotBtn: { marginTop: 16, alignItems: 'center' },
+  forgotText: { fontSize: 13 },
+  resetSentNote: { marginTop: 16, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+
+  switchBtn: { marginTop: 18, alignItems: 'center' },
   switchText: { fontSize: 14, lineHeight: 20 },
   switchLink: { fontWeight: '800' },
 
