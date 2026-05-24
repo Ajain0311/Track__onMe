@@ -1,6 +1,6 @@
 // screens/LocationPickerScreen.js — select work location before check-in
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   ActivityIndicator, Platform,
@@ -33,6 +33,7 @@ export default function LocationPickerScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selecting, setSelecting] = useState(null);
+  const autoSelectedRef = useRef(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -55,12 +56,16 @@ export default function LocationPickerScreen({ navigation, route }) {
 
   useEffect(() => { load(); }, [load]);
 
+  // 50 m tolerance for GPS inaccuracy (covers device error + urban multipath)
+  const GPS_BUFFER = 50;
+
   // Enrich locations with distance + wifi match
   const enriched = locations.map((loc) => {
     const distanceM = userGps
       ? haversineMeters(userGps.latitude, userGps.longitude, loc.latitude, loc.longitude)
       : null;
-    const gpsValid = distanceM != null && distanceM <= loc.radiusMeters;
+    // Accept check-in if within radius + GPS_BUFFER (reduces false "out of range")
+    const gpsValid = distanceM != null && distanceM <= (loc.radiusMeters + GPS_BUFFER);
     const wifiMatch = !!(
       currentSsid &&
       loc.wifiSsids?.length > 0 &&
@@ -75,17 +80,34 @@ export default function LocationPickerScreen({ navigation, route }) {
     return 0;
   });
 
+  // Auto-select when exactly 1 location is in range — skip the picker entirely
+  useEffect(() => {
+    if (loading || error || autoSelectedRef.current) return;
+    const inRange = enriched.filter((l) => l.canCheckIn);
+    if (inRange.length === 1) {
+      autoSelectedRef.current = true;
+      handleSelect(inRange[0]);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, error]);
+
   const handleSelect = async (loc) => {
     if (!loc.canCheckIn) return;
     setSelecting(loc.id);
+    // For GPS-based check-in, pass the location centre + radius so the
+    // auto-checkout monitor knows when the user has left the geofence.
     const locationData = loc.wifiMatch
       ? { locationId: loc.id, locationName: loc.name }
       : {
-          latitude: userGps.latitude,
-          longitude: userGps.longitude,
-          accuracy: userGps.accuracy ?? null,
-          locationId: loc.id,
-          locationName: loc.name,
+          latitude:          userGps.latitude,
+          longitude:         userGps.longitude,
+          accuracy:          userGps.accuracy ?? null,
+          locationId:        loc.id,
+          locationName:      loc.name,
+          // Centre of the geofence (for monitoring, not the user's position)
+          locationCenterLat: loc.latitude,
+          locationCenterLon: loc.longitude,
+          locationRadius:    loc.radiusMeters,
         };
     // Replace this screen with FaceVerification so back goes to Dashboard
     navigation.replace('FaceVerification', { mode, location: locationData });

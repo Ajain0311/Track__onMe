@@ -87,6 +87,10 @@ export const checkIn = (location = null, faceToken) =>
 export const checkOut = (faceToken) =>
   api.post('/checkout', { faceToken });
 
+/** System-triggered checkout — no faceToken required (WiFi/GPS leave event) */
+export const autoCheckOut = (reason = 'auto') =>
+  api.post('/auto-checkout', { reason });
+
 export const getAttendance      = () => api.get('/attendance');
 export const getAttendanceDaily = () => api.get('/attendance/daily');
 export const getStatus          = () => api.get('/status');

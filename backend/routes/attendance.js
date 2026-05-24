@@ -9,7 +9,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { getUserRole } = require('../services/adminService');
 const activity = require('../services/activityService');
 const {
-  checkIn, checkOut, getAttendanceDaily, getAttendance, getStatus,
+  checkIn, checkOut, autoCheckOut, getAttendanceDaily, getAttendance, getStatus,
 } = require('../controllers/attendanceController');
 
 // faceToken: signed token from POST /api/face/verify or /api/face/verify-web
@@ -29,8 +29,10 @@ const checkOutSchema = {
 // Limit check-in/out to 20/min/user to prevent abuse / accidental floods
 const attendanceLimiter = rateLimit({ windowMs: 60_000, max: 20, key: (req) => req.user?.id || req.ip });
 
-router.post('/checkin',  verifyToken, attendanceLimiter, validate({ body: checkInSchema }),  checkIn);
-router.post('/checkout', verifyToken, attendanceLimiter, validate({ body: checkOutSchema }), checkOut);
+router.post('/checkin',       verifyToken, attendanceLimiter, validate({ body: checkInSchema }),  checkIn);
+router.post('/checkout',      verifyToken, attendanceLimiter, validate({ body: checkOutSchema }), checkOut);
+// System-triggered checkout (WiFi/GPS leave) — no faceToken required
+router.post('/auto-checkout', verifyToken, autoCheckOut);
 router.get('/attendance/daily', verifyToken, getAttendanceDaily);
 router.get('/attendance',       verifyToken, getAttendance);
 router.get('/status',           verifyToken, getStatus);

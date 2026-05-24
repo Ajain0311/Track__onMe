@@ -49,6 +49,9 @@ export const requestLocationPermission = async () => {
 
 // ─── Get current position ────────────────────────────────────────────────────
 
+const withTimeout = (promise, ms) =>
+  Promise.race([promise, new Promise((_, rej) => setTimeout(() => rej(new Error('location_timeout')), ms))]);
+
 export const getCurrentLocation = async () => {
   if (Platform.OS === 'web') return getLocationWeb();
 
@@ -56,18 +59,28 @@ export const getCurrentLocation = async () => {
   if (status !== 'granted') {
     return { success: false, error: 'Location permission denied' };
   }
-  try {
-    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    return {
-      success:   true,
-      latitude:  loc.coords.latitude,
-      longitude: loc.coords.longitude,
-      accuracy:  loc.coords.accuracy,
-      timestamp: loc.timestamp,
-    };
-  } catch (err) {
-    return { success: false, error: err.message };
+
+  // Try High accuracy (GPS satellite) first — gives ±5-20m.
+  // Fall back to Balanced (WiFi/cell) if it times out (e.g. indoors).
+  for (const [accuracy, timeout] of [
+    [Location.Accuracy.High,     9000],
+    [Location.Accuracy.Balanced, 6000],
+  ]) {
+    try {
+      const loc = await withTimeout(
+        Location.getCurrentPositionAsync({ accuracy }),
+        timeout,
+      );
+      return {
+        success:   true,
+        latitude:  loc.coords.latitude,
+        longitude: loc.coords.longitude,
+        accuracy:  loc.coords.accuracy,
+        timestamp: loc.timestamp,
+      };
+    } catch (_) { /* try next accuracy level */ }
   }
+  return { success: false, error: 'Could not determine location. Try outdoors or near a window.' };
 };
 
 // ─── Reverse-geocode (cross-platform best-effort) ───────────────────────────

@@ -17,8 +17,12 @@ export const useTimeStore = create((set, get) => ({
   isCheckedIn: false,
   currentSessionStart: null,
   currentSessionSeconds: 0,
-  checkInSsid: null,       // WiFi SSID active at the time of check-in (null = not via WiFi)
-  checkInTimestamp: null,  // epoch ms of check-in — used for grace period in WiFi monitor
+  checkInSsid: null,           // WiFi SSID at check-in (null = not via WiFi)
+  checkInTimestamp: null,      // epoch ms of check-in (used for grace period)
+  checkInMethod: null,         // 'wifi' | 'location' | null
+  checkInLocationLat: null,    // geofence centre lat (GPS check-ins only)
+  checkInLocationLon: null,    // geofence centre lon (GPS check-ins only)
+  checkInLocationRadius: null, // geofence radius in metres (GPS check-ins only)
   
   // Total accumulated time (in seconds) - per user
   totalTimeSeconds: 0,
@@ -42,6 +46,10 @@ export const useTimeStore = create((set, get) => ({
         currentSessionSeconds: 0,
         checkInSsid: null,
         checkInTimestamp: null,
+        checkInMethod: null,
+        checkInLocationLat: null,
+        checkInLocationLon: null,
+        checkInLocationRadius: null,
         totalTimeSeconds: 0,
         sessions: [],
         dailyTotals: {},
@@ -113,10 +121,10 @@ export const useTimeStore = create((set, get) => ({
   },
 
   // Check in - start a new session.
-  // ssid: the WiFi network name the user was on when checking in (null = not via WiFi).
-  // initialSeconds: elapsed seconds to seed the timer with (used when syncing from server
-  //   after an app restart so the timer shows real elapsed time instead of starting at 0).
-  checkIn: (ssid = null, initialSeconds = 0) => {
+  // ssid: WiFi SSID at check-in (null = not via WiFi).
+  // initialSeconds: seed the timer (used when restoring server state on app restart).
+  // locationMeta: { latitude, longitude, radiusMeters } for GPS check-ins (for auto-checkout monitor).
+  checkIn: (ssid = null, initialSeconds = 0, locationMeta = null) => {
     const now = new Date();
     set({
       isCheckedIn: true,
@@ -124,6 +132,10 @@ export const useTimeStore = create((set, get) => ({
       currentSessionSeconds: Math.max(0, Math.floor(initialSeconds)),
       checkInSsid: ssid,
       checkInTimestamp: now.getTime(),
+      checkInMethod: ssid ? 'wifi' : locationMeta ? 'location' : null,
+      checkInLocationLat:    locationMeta?.latitude    ?? null,
+      checkInLocationLon:    locationMeta?.longitude   ?? null,
+      checkInLocationRadius: locationMeta?.radiusMeters ?? null,
     });
   },
 
@@ -176,6 +188,10 @@ export const useTimeStore = create((set, get) => ({
       dailyTotals: updatedDailyTotals,
       checkInSsid: null,
       checkInTimestamp: null,
+      checkInMethod: null,
+      checkInLocationLat: null,
+      checkInLocationLon: null,
+      checkInLocationRadius: null,
     });
   },
 

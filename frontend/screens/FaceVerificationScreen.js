@@ -251,7 +251,17 @@ export default function FaceVerificationScreen({ navigation, route }) {
     try {
       await checkIn(routeLocation, faceToken);
       const wifiInfo = await getWifiInfo();
-      await storeCheckIn(wifiInfo?.ssid || null);
+
+      // For GPS-based check-ins, pass the geofence centre so the auto-checkout
+      // monitor knows when the user has left the area.
+      const isGps = routeLocation?.locationCenterLat != null;
+      const locationMeta = isGps ? {
+        latitude:     routeLocation.locationCenterLat,
+        longitude:    routeLocation.locationCenterLon,
+        radiusMeters: routeLocation.locationRadius,
+      } : null;
+
+      await storeCheckIn(wifiInfo?.ssid || null, 0, locationMeta);
       clearTimeout(slowTimerRef.current);
       setSlowRequest(false);
       showToast('Check-in successful!', 'success');
@@ -494,8 +504,8 @@ export default function FaceVerificationScreen({ navigation, route }) {
               onFacesDetected={handleFacesDetected}
               faceDetectorSettings={{
                 mode: 'fast',
-                detectLandmarks: true,
-                runClassifications: true,
+                detectLandmarks: 'all',
+                runClassifications: 'all',
                 minDetectionInterval: 100,
                 tracking: true,
               }}

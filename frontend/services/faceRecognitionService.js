@@ -32,15 +32,15 @@ export const validateFacePosition = (face) => {
   if (face.bounds) {
     const { size } = face.bounds;
     const faceArea = size.width * size.height;
-    if (faceArea < 15000) return { valid: false, message: 'Move closer to the camera', guidance: 'move_closer' };
-    if (faceArea > 260000) return { valid: false, message: 'Move back a little', guidance: 'move_back' };
+    if (faceArea < 8000)  return { valid: false, message: 'Move closer to the camera', guidance: 'move_closer' };
+    if (faceArea > 400000) return { valid: false, message: 'Move back a little', guidance: 'move_back' };
   }
 
-  if (face.yawAngle !== undefined && Math.abs(face.yawAngle) > 20)
+  if (face.yawAngle !== undefined && Math.abs(face.yawAngle) > 35)
     return { valid: false, message: 'Turn to face the camera directly', guidance: 'face_forward' };
-  if (face.rollAngle !== undefined && Math.abs(face.rollAngle) > 20)
+  if (face.rollAngle !== undefined && Math.abs(face.rollAngle) > 35)
     return { valid: false, message: 'Keep your head straight', guidance: 'straighten_head' };
-  if (face.pitchAngle !== undefined && Math.abs(face.pitchAngle) > 15)
+  if (face.pitchAngle !== undefined && Math.abs(face.pitchAngle) > 30)
     return { valid: false, message: 'Look straight at the camera', guidance: 'look_straight' };
 
   if (face.leftEyeOpenProbability !== undefined && face.rightEyeOpenProbability !== undefined) {

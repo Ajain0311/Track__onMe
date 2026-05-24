@@ -172,26 +172,36 @@ export default function SettingsScreen({ navigation }) {
     </TouchableOpacity>
   );
 
+  // Admin can adjust goals; regular users see them as read-only
   const GoalAdjuster = ({ label, value, field, unit }) => (
     <View style={st.goalRow}>
-      <Text style={[st.goalLabel, { color: g.text }]}>{label}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={[st.goalLabel, { color: g.text }]}>{label}</Text>
+        {!isAdmin && (
+          <Text style={{ color: g.textDim, fontSize: 11, marginTop: 2 }}>🔒 Set by admin</Text>
+        )}
+      </View>
       <View style={st.goalControls}>
-        <TouchableOpacity
-          style={[st.goalBtn, { backgroundColor: g.glass, borderColor: g.border }]}
-          onPress={() => adjustGoal(field, -1)}
-        >
-          <Text style={{ color: g.text, fontSize: 18, fontWeight: '700' }}>−</Text>
-        </TouchableOpacity>
+        {isAdmin && (
+          <TouchableOpacity
+            style={[st.goalBtn, { backgroundColor: g.glass, borderColor: g.border }]}
+            onPress={() => adjustGoal(field, -1)}
+          >
+            <Text style={{ color: g.text, fontSize: 18, fontWeight: '700' }}>−</Text>
+          </TouchableOpacity>
+        )}
         <View style={[st.goalValueBox, { backgroundColor: g.accentSoft, borderColor: g.borderGlow }]}>
           <Text style={{ color: g.accent, fontSize: 16, fontWeight: '900' }}>{value}</Text>
           <Text style={{ color: g.accent, fontSize: 11, fontWeight: '600' }}>{unit}</Text>
         </View>
-        <TouchableOpacity
-          style={[st.goalBtn, { backgroundColor: g.glass, borderColor: g.border }]}
-          onPress={() => adjustGoal(field, 1)}
-        >
-          <Text style={{ color: g.text, fontSize: 18, fontWeight: '700' }}>+</Text>
-        </TouchableOpacity>
+        {isAdmin && (
+          <TouchableOpacity
+            style={[st.goalBtn, { backgroundColor: g.glass, borderColor: g.border }]}
+            onPress={() => adjustGoal(field, 1)}
+          >
+            <Text style={{ color: g.text, fontSize: 18, fontWeight: '700' }}>+</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );

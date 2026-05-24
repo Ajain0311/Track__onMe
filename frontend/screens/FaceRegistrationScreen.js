@@ -397,8 +397,8 @@ export default function FaceRegistrationScreen({ navigation }) {
                 onFacesDetected={isWeb ? undefined : handleFacesDetected}
                 faceDetectorSettings={isWeb ? undefined : {
                   mode: 'fast',
-                  detectLandmarks: true,
-                  runClassifications: true,
+                  detectLandmarks: 'all',
+                  runClassifications: 'all',
                   minDetectionInterval: 150,
                   tracking: true,
                 }}

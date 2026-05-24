@@ -250,4 +250,38 @@ const getStatus = asyncHandler(async (req, res) => {
   res.json({ isCheckedIn: !!active, activeSession: active || null });
 });
 
-module.exports = { checkIn, checkOut, getAttendanceDaily, getAttendance, getStatus };
+// ─── POST /api/auto-checkout ─────────────────────────────────────────────────
+// System-triggered checkout (WiFi disconnect or GPS out-of-range). No faceToken.
+const autoCheckOut = asyncHandler(async (req, res) => {
+  const userId = req.user.id;
+  const { reason = 'auto' } = req.body || {};
+
+  const active = await getActiveSession(userId);
+  if (!active) {
+    return res.json({ message: 'No active session.' });
+  }
+
+  const record = await updateCheckOut(active.id, active.checkInTime, {
+    faceVerified:       false,
+    faceSimilarity:     null,
+    verificationMethod: 'auto_checkout',
+  });
+
+  await activity.record({
+    userId,
+    type:        'check_out',
+    title:       'Auto checked out',
+    description: `${record.totalDuration ?? 0} min session (${reason})`,
+    metadata: {
+      attendanceId:    record.id,
+      durationMinutes: record.totalDuration,
+      reason,
+      autoCheckout:    true,
+    },
+  });
+
+  logger.info('Auto check-out recorded', { userId, reason, attendanceId: record.id });
+  res.json({ message: 'Auto checkout complete.', record });
+});
+
+module.exports = { checkIn, checkOut, autoCheckOut, getAttendanceDaily, getAttendance, getStatus };
