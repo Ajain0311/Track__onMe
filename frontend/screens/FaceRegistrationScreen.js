@@ -49,6 +49,7 @@ export default function FaceRegistrationScreen({ navigation }) {
   // Multi-sample collection
   const [sampleCount, setSampleCount] = useState(0);
   const [isCollecting, setIsCollecting] = useState(false);
+  const [isCameraReady, setIsCameraReady] = useState(false);
 
   const [capturedUri, setCapturedUri] = useState(null);
   const [capturedFeatures, setCapturedFeatures] = useState(null);
@@ -60,6 +61,8 @@ export default function FaceRegistrationScreen({ navigation }) {
   const samplesRef = useRef([]);
   const sampleTimerRef = useRef(null);
   const isCollectingRef = useRef(false);
+  const pollActiveRef = useRef(false);
+  const stageRef = useRef('camera');
 
   const showToast = (message, type = 'success') => setToast({ visible: true, message, type });
 
@@ -79,6 +82,9 @@ export default function FaceRegistrationScreen({ navigation }) {
     });
   }, [user, navigation]);
 
+  // Keep stageRef in sync so polling closure always reads the latest stage
+  useEffect(() => { stageRef.current = stage; }, [stage]);
+
   // Timeout hint if no face detected
   useEffect(() => {
     if (isWeb || stage !== 'camera') return;
@@ -89,6 +95,44 @@ export default function FaceRegistrationScreen({ navigation }) {
     }, 2500);
     return () => clearInterval(interval);
   }, [faceDetected, stage]);
+
+  // ── Face detection via detectFacesAsync polling ─────────────────────────────
+  // CameraView's onFacesDetected callback is unreliable on many Android devices.
+  // Instead we poll: take a low-quality photo every 800 ms and run detectFacesAsync.
+  useEffect(() => {
+    if (isWeb || !isCameraReady) return;
+    const id = setInterval(async () => {
+      if (pollActiveRef.current || isCollectingRef.current || stageRef.current !== 'camera') return;
+      if (!cameraRef.current) return;
+      pollActiveRef.current = true;
+      try {
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.4, skipProcessing: true, exif: false,
+        });
+        const result = await FaceDetector.detectFacesAsync(photo.uri, {
+          mode: FaceDetector.FaceDetectorMode.fast,
+          detectLandmarks: FaceDetector.FaceDetectorLandmarks.all,
+          runClassifications: FaceDetector.FaceDetectorClassifications.all,
+        });
+        // Normalize: map top-level position props → landmarks object expected by handleFacesDetected
+        const normalized = (result.faces || []).map((f) => ({
+          ...f,
+          landmarks: {
+            leftEye:    f.leftEyePosition,
+            rightEye:   f.rightEyePosition,
+            nose:       f.noseBasePosition,
+            leftMouth:  f.leftMouthPosition,
+            rightMouth: f.rightMouthPosition,
+            bottomMouth: f.bottomMouthPosition,
+          },
+        }));
+        handleFacesDetected({ faces: normalized });
+      } catch (_) { /* camera busy or not ready — skip this tick */ }
+      finally { pollActiveRef.current = false; }
+    }, 800);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCameraReady, isWeb]);
 
   // ── Auto-collect samples when face is valid ─────────────────────────────────
   const startCollecting = useCallback(() => {
@@ -395,14 +439,7 @@ export default function FaceRegistrationScreen({ navigation }) {
                 ref={cameraRef}
                 style={StyleSheet.absoluteFill}
                 facing="front"
-                onFacesDetected={isWeb ? undefined : handleFacesDetected}
-                faceDetectorSettings={isWeb ? undefined : {
-                  mode: FaceDetector.FaceDetectorMode.fast,
-                  detectLandmarks: FaceDetector.FaceDetectorLandmarks.all,
-                  runClassifications: FaceDetector.FaceDetectorClassifications.all,
-                  minDetectionInterval: 150,
-                  tracking: true,
-                }}
+                onCameraReady={() => setIsCameraReady(true)}
               />
               <View style={StyleSheet.absoluteFill} pointerEvents="none">
                 <View style={[styles.corner, styles.tl, { borderColor: (faceDetected || isWeb) ? g.mint : g.coral }]} />

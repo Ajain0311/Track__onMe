@@ -84,11 +84,14 @@ export default function FaceVerificationScreen({ navigation, route }) {
   const [storedFaceData, setStoredFaceData] = useState(null);
   const [faceDataLoading, setFaceDataLoading] = useState(true);
 
+  const [isCameraReady, setIsCameraReady] = useState(false);
+
   const cameraRef = useRef(null);
   const currentFaceRef = useRef(null);
   const lastDetectionTimeRef = useRef(Date.now());
   const slowTimerRef = useRef(null);
   const consecutiveRef = useRef(0);
+  const pollActiveRef = useRef(false);
 
   const showToast = (message, type = 'success') =>
     setToast({ visible: true, message, type });
@@ -146,6 +149,42 @@ export default function FaceVerificationScreen({ navigation, route }) {
       setStoredFaceData(data);
     }).catch(() => setFaceDataLoading(false));
   }, [user, navigation, isWeb]);
+
+  // ── Face detection via detectFacesAsync polling ─────────────────────────────
+  // CameraView's onFacesDetected callback is unreliable on many Android devices.
+  // Poll with takePictureAsync + detectFacesAsync instead.
+  useEffect(() => {
+    if (isWeb || !isCameraReady || faceDataLoading) return;
+    const id = setInterval(async () => {
+      if (pollActiveRef.current || isProcessing || !cameraRef.current) return;
+      pollActiveRef.current = true;
+      try {
+        const photo = await cameraRef.current.takePictureAsync({
+          quality: 0.4, skipProcessing: true, exif: false,
+        });
+        const result = await FaceDetector.detectFacesAsync(photo.uri, {
+          mode: FaceDetector.FaceDetectorMode.fast,
+          detectLandmarks: FaceDetector.FaceDetectorLandmarks.all,
+          runClassifications: FaceDetector.FaceDetectorClassifications.all,
+        });
+        const normalized = (result.faces || []).map((f) => ({
+          ...f,
+          landmarks: {
+            leftEye:     f.leftEyePosition,
+            rightEye:    f.rightEyePosition,
+            nose:        f.noseBasePosition,
+            leftMouth:   f.leftMouthPosition,
+            rightMouth:  f.rightMouthPosition,
+            bottomMouth: f.bottomMouthPosition,
+          },
+        }));
+        handleFacesDetected({ faces: normalized });
+      } catch (_) { /* camera busy — skip */ }
+      finally { pollActiveRef.current = false; }
+    }, 800);
+    return () => clearInterval(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCameraReady, isWeb, faceDataLoading]);
 
   // ── "No face detected" hint after 7s ────────────────────────────────────────
   useEffect(() => {
@@ -502,14 +541,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
               ref={cameraRef}
               style={StyleSheet.absoluteFill}
               facing="front"
-              onFacesDetected={handleFacesDetected}
-              faceDetectorSettings={{
-                mode: FaceDetector.FaceDetectorMode.fast,
-                detectLandmarks: FaceDetector.FaceDetectorLandmarks.all,
-                runClassifications: FaceDetector.FaceDetectorClassifications.all,
-                minDetectionInterval: 100,
-                tracking: true,
-              }}
+              onCameraReady={() => setIsCameraReady(true)}
             />
           )}
           {isWeb && (
