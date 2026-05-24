@@ -1,0 +1,38 @@
+# render.yaml — Render Blueprint for AttendTrack backend
+# https://render.com/docs/blueprint-spec
+#
+# NOTE: Secrets (keys) must be set manually in the Render dashboard.
+#       This file only defines the service structure.
+
+services:
+  - type: web
+    name: track-onme
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: node index.js
+    plan: free
+    healthCheckPath: /health
+    autoDeploy: true
+
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+      # ── Supabase ────────────────────────────────────────────────────────────
+      - key: SUPABASE_URL
+        sync: false           # Set in Render dashboard
+
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false           # Set in Render dashboard — KEEP SECRET
+
+      - key: SUPABASE_ANON_KEY
+        sync: false           # Set in Render dashboard — required for web password verification
+
+      # ── Face verification token ─────────────────────────────────────────────
+      - key: FACE_TOKEN_SECRET
+        sync: false           # Set in Render dashboard — HMAC signing secret
+
+      # ── CORS ────────────────────────────────────────────────────────────────
+      - key: CORS_ORIGIN
+        value: https://attendeyesonme.netlify.app,http://localhost:19006,http://localhost:8081
