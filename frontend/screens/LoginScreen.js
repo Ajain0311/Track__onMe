@@ -12,7 +12,7 @@ import useThemeStore from '../store/themeStore';
 
 // ── Android APK download URL ──────────────────────────────────────────────────
 // Update this after each EAS build (grab the URL from the EAS dashboard).
-const APK_DOWNLOAD_URL = 'https://expo.dev/artifacts/eas/n4R5rYQjvTqZurvTjtNiyF.apk';
+const APK_DOWNLOAD_URL = 'https://expo.dev/artifacts/eas/bwtWzWYwja1GJcuS94QPbK.apk';
 
 const toAuthEmail = (input) => {
   const t = input.trim().toLowerCase();
