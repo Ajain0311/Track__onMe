@@ -172,6 +172,18 @@ const injectWebStyles = () => {
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: rgba(139,124,255,0.3); border-radius: 8px; }
     ::-webkit-scrollbar-thumb:hover { background: rgba(139,124,255,0.5); }
+
+    /* Desktop SaaS layout: subtle radial backdrop + soft card glow on cards */
+    @media (min-width: 1024px) {
+      body::before {
+        content: '';
+        position: fixed; inset: 0; pointer-events: none; z-index: 0;
+        background:
+          radial-gradient(800px 600px at 10% -10%, rgba(139,124,255,0.10), transparent 60%),
+          radial-gradient(700px 500px at 110% 20%, rgba(62,232,199,0.07), transparent 60%),
+          radial-gradient(900px 700px at 50% 120%, rgba(229,83,75,0.06), transparent 60%);
+      }
+    }
   `;
   const style = document.createElement('style');
   style.id = 'attendtrack-web-styles';
