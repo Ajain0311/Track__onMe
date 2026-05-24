@@ -6,7 +6,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator,
-  Dimensions, Platform, Linking,
+  Dimensions, Platform, Linking, TextInput,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,6 +23,7 @@ import {
 } from '../services/faceRecognitionService';
 import { checkIn, checkOut, getApiErrorMessage } from '../services/api';
 import { getWifiInfo } from '../services/wifiService';
+import { supabase } from '../services/supabaseConfig';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const CAMERA_SIZE = Math.min(screenWidth - 48, screenHeight * 0.42, 380);
@@ -43,8 +44,15 @@ export default function FaceVerificationScreen({ navigation, route }) {
   const [isProcessing, setIsProcessing] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
   const [faceMessage, setFaceMessage] = useState(
-    isWeb ? '✓ Ready — click the button below' : 'Position your face in the frame'
+    isWeb
+      ? 'On web, confirm your identity with your password to ' + (mode === 'checkin' ? 'check in' : 'check out')
+      : 'Position your face in the frame'
   );
+
+  // Web-only: real second factor (re-enter password) since no native face detector
+  const [webPassword, setWebPassword] = useState('');
+  const [webPasswordShow, setWebPasswordShow] = useState(false);
+  const [webPasswordVerified, setWebPasswordVerified] = useState(false);
   const [similarity, setSimilarity] = useState(0);
   const [consecutiveMatches, setConsecutiveMatches] = useState(0);
   const [faceMatchConfirmed, setFaceMatchConfirmed] = useState(false);
@@ -242,8 +250,35 @@ export default function FaceVerificationScreen({ navigation, route }) {
     setSlowRequest(false);
     slowTimerRef.current = setTimeout(() => setSlowRequest(true), 6000);
 
-    // Web: skip face check, proceed directly
+    // Web: face detection is unavailable in expo-camera/web. Instead we
+    // require the user to re-enter their account password — a real second
+    // factor that prevents anyone sitting at an unlocked browser from
+    // checking in/out on someone else's behalf.
     if (isWeb) {
+      if (!webPassword) {
+        clearTimeout(slowTimerRef.current);
+        showToast('Enter your password to confirm.', 'error');
+        setIsProcessing(false);
+        return;
+      }
+      try {
+        const { error: pwErr } = await supabase.auth.signInWithPassword({
+          email: user.email,
+          password: webPassword,
+        });
+        if (pwErr) {
+          clearTimeout(slowTimerRef.current);
+          showToast('Incorrect password. Try again.', 'error');
+          setIsProcessing(false);
+          return;
+        }
+      } catch (e) {
+        clearTimeout(slowTimerRef.current);
+        showToast(e?.message || 'Could not verify identity.', 'error');
+        setIsProcessing(false);
+        return;
+      }
+      setWebPasswordVerified(true);
       if (mode === 'checkin') await performCheckIn();
       else await performCheckOut();
       return;
@@ -370,10 +405,12 @@ export default function FaceVerificationScreen({ navigation, route }) {
   }
 
   // Button active when:
-  //   • web (no camera verification needed), OR
-  //   • face match confirmed via consecutive frames (primary path), OR
+  //   • web AND a password has been entered (verified against Supabase before
+  //     submit) — this is the second factor on web where camera face
+  //     detection isn't available, OR
+  //   • face match confirmed via consecutive frames (primary path on native), OR
   //   • face is detected AND no stored data exists (allow check-in to proceed so user can register)
-  const btnReady = isWeb
+  const btnReady = (isWeb && webPassword.length >= 6)
     || faceMatchConfirmed
     || (!faceDataLoading && faceDetected && !storedFaceData && !faceLoadError);
   const matchPct = Math.round(similarity * 100);
@@ -394,10 +431,44 @@ export default function FaceVerificationScreen({ navigation, route }) {
           </Text>
           <Text style={[s.hint, { color: g.textMuted }]}>
             {isWeb
-              ? 'Camera visible for record — click verify to proceed'
+              ? 'Web browsers can\'t verify faces — confirm with your account password below'
               : `Hold your face in frame — ${CONSECUTIVE_MATCHES} consistent matches required`}
           </Text>
         </View>
+
+        {/* Web-only password second factor */}
+        {isWeb && (
+          <View style={[s.webPwBox, { backgroundColor: g.glass, borderColor: g.border }]}>
+            <Text style={{ color: g.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 8 }}>
+              CONFIRM IDENTITY — PASSWORD
+            </Text>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              <TextInput
+                style={{
+                  flex: 1, backgroundColor: 'rgba(0,0,0,0.32)', borderColor: g.border,
+                  color: g.text, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14,
+                }}
+                placeholder="Your account password"
+                placeholderTextColor={g.textDim}
+                secureTextEntry={!webPasswordShow}
+                value={webPassword}
+                onChangeText={(t) => { setWebPassword(t); setWebPasswordVerified(false); }}
+                autoCapitalize="none"
+                autoCorrect={false}
+                onSubmitEditing={verifyAndProceed}
+              />
+              <TouchableOpacity
+                onPress={() => setWebPasswordShow((v) => !v)}
+                style={{ paddingHorizontal: 14, borderWidth: 1, borderColor: g.border, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}
+              >
+                <Text style={{ fontSize: 16 }}>{webPasswordShow ? '🙈' : '👁'}</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={{ color: g.textDim, fontSize: 11, marginTop: 8, lineHeight: 16 }}>
+              For real face verification, install the mobile app. The web flow uses your account password as a second factor.
+            </Text>
+          </View>
+        )}
 
         {/* Camera */}
         <View style={[s.camWrap, {
@@ -554,4 +625,7 @@ const s = StyleSheet.create({
   btnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   cancelBtn: { borderRadius: 16, paddingVertical: 14, alignItems: 'center', borderWidth: 1 },
   cancelText: { fontSize: 14, fontWeight: '600' },
+  webPwBox: {
+    borderRadius: 14, padding: 14, marginBottom: 16, borderWidth: 1,
+  },
 });

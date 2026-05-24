@@ -140,11 +140,51 @@ function SplashScreen() {
   );
 }
 
+// Inject web-only CSS once on mount: smooth fonts, scroll behavior, focus rings.
+// Implements the UI/UX skill's accessibility + transition guidelines without
+// having to touch every screen.
+const injectWebStyles = () => {
+  if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+  if (document.getElementById('attendtrack-web-styles')) return;
+  const css = `
+    html, body, #root { height: 100%; }
+    body {
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+      scroll-behavior: smooth;
+      background: #06060f;
+    }
+    *:focus-visible {
+      outline: 2px solid #8b7cff !important;
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+    button, [role="button"] { cursor: pointer; transition: transform 180ms ease, opacity 180ms ease; }
+    button:active, [role="button"]:active { transform: scale(0.98); }
+    input, textarea { transition: border-color 180ms ease, background 180ms ease; }
+    /* Respect users who prefer less motion */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    }
+    /* Scrollbar polish on web */
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(139,124,255,0.3); border-radius: 8px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(139,124,255,0.5); }
+  `;
+  const style = document.createElement('style');
+  style.id = 'attendtrack-web-styles';
+  style.textContent = css;
+  document.head.appendChild(style);
+};
+
 export default function App() {
   const { user, loading: authLoading, setUser, setLoading: setAuthLoading, setIsAdmin } = useAuthStore();
   const { initialize: initializeTheme, colors: g } = useThemeStore();
 
   useEffect(() => {
+    injectWebStyles();
     initializeTheme();
     useTimeStore.getState().clearOldGlobalData();
   }, []);
