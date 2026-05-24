@@ -5,43 +5,56 @@ const { supabase } = require('./supabase');
 
 // Map DB snake_case columns → camelCase for API responses
 const mapRow = (row) => ({
-  id: row.id,
-  userId: row.user_id,
-  checkInTime: row.check_in_time,
-  checkOutTime: row.check_out_time,
-  totalDuration: row.total_duration,
-  date: row.date,
-  latitude: row.latitude ?? null,
-  longitude: row.longitude ?? null,
-  accuracy: row.accuracy ?? null,
-  checkInMethod: row.check_in_method ?? 'wifi',
-  locationId: row.location_id ?? null,
-  locationName: row.location_name ?? null,
-  createdAt: row.created_at,
+  id:                      row.id,
+  userId:                  row.user_id,
+  checkInTime:             row.check_in_time,
+  checkOutTime:            row.check_out_time,
+  totalDuration:           row.total_duration,
+  date:                    row.date,
+  latitude:                row.latitude           ?? null,
+  longitude:               row.longitude          ?? null,
+  accuracy:                row.accuracy           ?? null,
+  checkInMethod:           row.check_in_method    ?? 'wifi',
+  locationId:              row.location_id        ?? null,
+  locationName:            row.location_name      ?? null,
+  faceVerified:            row.face_verified       ?? false,
+  faceSimilarityScore:     row.face_similarity_score ?? null,
+  faceVerificationMethod:  row.face_verification_method ?? null,
+  createdAt:               row.created_at,
 });
 
 /**
  * Create a new check-in record.
  * @param {string} userId
- * @param {{ latitude, longitude, accuracy, method }|null} location
+ * @param {{ latitude, longitude, accuracy, locationId, locationName }|null} location
+ * @param {{ faceVerified, faceSimilarity, verificationMethod }|null} faceVerification
  */
-const createCheckIn = async (userId, location = null) => {
+const createCheckIn = async (userId, location = null, faceVerification = null) => {
   const now = new Date();
+  const row = {
+    user_id:        userId,
+    check_in_time:  now.toISOString(),
+    check_out_time: null,
+    total_duration: null,
+    date:           now.toISOString().split('T')[0],
+    latitude:       location?.latitude   ?? null,
+    longitude:      location?.longitude  ?? null,
+    accuracy:       location?.accuracy   ?? null,
+    check_in_method: location?.locationId ? 'location' : location?.latitude ? 'gps' : 'wifi',
+    location_id:    location?.locationId   ?? null,
+    location_name:  location?.locationName ?? null,
+  };
+
+  // Attach face verification audit data (migration 004 columns)
+  if (faceVerification) {
+    row.face_verified            = faceVerification.faceVerified ?? false;
+    row.face_similarity_score    = faceVerification.faceSimilarity ?? null;
+    row.face_verification_method = faceVerification.verificationMethod ?? null;
+  }
+
   const { data, error } = await supabase
     .from('attendance')
-    .insert({
-      user_id: userId,
-      check_in_time: now.toISOString(),
-      check_out_time: null,
-      total_duration: null,
-      date: now.toISOString().split('T')[0],
-      latitude: location?.latitude ?? null,
-      longitude: location?.longitude ?? null,
-      accuracy: location?.accuracy ?? null,
-      check_in_method: location?.locationId ? 'location' : location ? 'gps' : 'wifi',
-      location_id: location?.locationId ?? null,
-      location_name: location?.locationName ?? null,
-    })
+    .insert(row)
     .select()
     .single();
 
@@ -67,18 +80,31 @@ const getActiveSession = async (userId) => {
 };
 
 /**
- * Update a record with checkout time and total duration (in minutes).
+ * Update a record with checkout time, total duration, and optional face verification data.
+ * @param {string} recordId
+ * @param {string} checkInTime  ISO string
+ * @param {{ faceVerified, faceSimilarity, verificationMethod }|null} faceVerification
  */
-const updateCheckOut = async (recordId, checkInTime) => {
-  const now = new Date();
+const updateCheckOut = async (recordId, checkInTime, faceVerification = null) => {
+  const now          = new Date();
   const totalDuration = Math.round((now - new Date(checkInTime)) / 60000);
+
+  const update = {
+    check_out_time: now.toISOString(),
+    total_duration: totalDuration,
+  };
+
+  if (faceVerification) {
+    // Update face verification method for check-out.
+    // We keep the check-in similarity score but note that check-out was also verified.
+    update.face_verified            = faceVerification.faceVerified ?? false;
+    update.face_similarity_score    = faceVerification.faceSimilarity ?? null;
+    update.face_verification_method = faceVerification.verificationMethod ?? null;
+  }
 
   const { data, error } = await supabase
     .from('attendance')
-    .update({
-      check_out_time: now.toISOString(),
-      total_duration: totalDuration,
-    })
+    .update(update)
     .eq('id', recordId)
     .select()
     .single();
@@ -115,21 +141,22 @@ const buildDailySummaries = (records) => {
 
     if (!map.has(day)) {
       map.set(day, {
-        date: day,
-        totalMinutes: 0,
-        sessionCount: 0,
+        date:           day,
+        totalMinutes:   0,
+        sessionCount:   0,
         hasOpenSession: false,
-        sessions: [],
+        sessions:       [],
       });
     }
 
     const entry = map.get(day);
     entry.sessionCount += 1;
     entry.sessions.push({
-      id: r.id,
-      checkInTime: r.checkInTime,
+      id:           r.id,
+      checkInTime:  r.checkInTime,
       checkOutTime: r.checkOutTime,
       totalDuration: r.totalDuration,
+      faceVerified: r.faceVerified,
     });
 
     if (r.checkOutTime != null && typeof r.totalDuration === 'number') {

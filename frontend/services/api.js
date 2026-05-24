@@ -37,7 +37,7 @@ export function getApiErrorMessage(error) {
   const msg = error?.message || '';
   if (msg.includes('Not signed in')) return msg;
   if (error?.response?.status === 401) return 'Session expired. Sign out and sign in again.';
-  if (error?.response?.status === 403) return 'You don\'t have permission to do that.';
+  if (error?.response?.status === 403) return error?.response?.data?.error || 'You don\'t have permission to do that.';
   if (error?.code === 'ECONNABORTED' || msg.toLowerCase().includes('timeout'))
     return 'Request timed out. The server may be waking up — try again in a moment.';
   if (error?.response?.data?.error) return String(error.response.data.error);
@@ -46,26 +46,55 @@ export function getApiErrorMessage(error) {
   return msg || 'Something went wrong.';
 }
 
+// ─── Face verification ────────────────────────────────────────────────────────
+// Must be called BEFORE checkIn/checkOut — returns a signed faceToken
+
+/** Register face features on the server (native only, call after AsyncStorage save) */
+export const registerFaceOnServer = (features) =>
+  api.post('/face/register', { features });
+
+/** Verify face features server-side, get a signed token for check-in/out (native) */
+export const verifyFaceWithServer = (features, mode) =>
+  api.post('/face/verify', { features, mode });
+
+/** Verify identity via password server-side, get a signed token for check-in/out (web) */
+export const verifyWebWithServer = (password, mode) =>
+  api.post('/face/verify-web', { password, mode });
+
+/** Check if the user has registered face data on the server */
+export const getFaceStatusFromServer = () =>
+  api.get('/face/status');
+
+/** Delete face data from the server */
+export const deleteFaceFromServer = () =>
+  api.delete('/face');
+
 // ─── Attendance ───────────────────────────────────────────────────────────────
+// faceToken is required — obtain it from verifyFaceWithServer or verifyWebWithServer first.
 
-export const checkIn = (location = null) =>
-  api.post('/checkin', location ? {
-    latitude: location.latitude,
-    longitude: location.longitude,
-    accuracy: location.accuracy ?? null,
-    locationId: location.locationId ?? null,
-    locationName: location.locationName ?? null,
-  } : {});
+export const checkIn = (location = null, faceToken) =>
+  api.post('/checkin', {
+    faceToken,
+    ...(location ? {
+      latitude:     location.latitude,
+      longitude:    location.longitude,
+      accuracy:     location.accuracy  ?? null,
+      locationId:   location.locationId  ?? null,
+      locationName: location.locationName ?? null,
+    } : {}),
+  });
 
-export const checkOut = () => api.post('/checkout');
-export const getAttendance = () => api.get('/attendance');
+export const checkOut = (faceToken) =>
+  api.post('/checkout', { faceToken });
+
+export const getAttendance      = () => api.get('/attendance');
 export const getAttendanceDaily = () => api.get('/attendance/daily');
-export const getStatus = () => api.get('/status');
+export const getStatus          = () => api.get('/status');
 
 // ─── Current user ─────────────────────────────────────────────────────────────
 
-export const getMe = () => api.get('/me');
-export const trackLogin = (platform) => api.post('/me/track-login', { platform });
+export const getMe         = () => api.get('/me');
+export const trackLogin    = (platform) => api.post('/me/track-login', { platform });
 
 // ─── Locations (user-facing) ──────────────────────────────────────────────────
 
@@ -80,7 +109,7 @@ export const adminGetUserAttendance = (userId) => api.get(`/admin/users/${userId
 export const adminUpdateUserRole = (userId, role) => api.patch(`/admin/users/${userId}/role`, { role });
 
 export const adminGetLocations = () => api.get('/admin/locations');
-export const adminGetLocation = (id) => api.get(`/admin/locations/${id}`);
+export const adminGetLocation  = (id) => api.get(`/admin/locations/${id}`);
 export const adminCreateLocation = (payload) => api.post('/admin/locations', payload);
 export const adminUpdateLocation = (id, payload) => api.put(`/admin/locations/${id}`, payload);
 export const adminToggleLocation = (id) => api.patch(`/admin/locations/${id}/toggle`);
@@ -88,15 +117,15 @@ export const adminDeleteLocation = (id) => api.delete(`/admin/locations/${id}`);
 
 // ─── Location Requests (user) ─────────────────────────────────────────────────
 
-export const getMyLocationRequests = () => api.get('/location-requests');
-export const submitLocationRequest = (payload) => api.post('/location-requests', payload);
-export const cancelLocationRequest = (id) => api.delete(`/location-requests/${id}`);
+export const getMyLocationRequests   = () => api.get('/location-requests');
+export const submitLocationRequest   = (payload) => api.post('/location-requests', payload);
+export const cancelLocationRequest   = (id) => api.delete(`/location-requests/${id}`);
 
 // ─── Notifications ────────────────────────────────────────────────────────────
 
 export const getNotifications = (unreadOnly = false) =>
   api.get('/notifications', { params: { unread: unreadOnly ? 1 : undefined } });
-export const markNotificationRead = (id) => api.patch(`/notifications/${id}/read`);
+export const markNotificationRead     = (id) => api.patch(`/notifications/${id}/read`);
 export const markAllNotificationsRead = () => api.patch('/notifications/read-all');
 
 // ─── Activity ─────────────────────────────────────────────────────────────────
@@ -111,9 +140,9 @@ export const adminGetAuditLogs = (params = {}) =>
 
 // ─── Location Requests (admin) ────────────────────────────────────────────────
 
-export const adminGetLocationRequests = (status = 'pending') =>
+export const adminGetLocationRequests    = (status = 'pending') =>
   api.get('/admin/location-requests', { params: { status } });
 export const adminApproveLocationRequest = (id, adminNote) =>
   api.patch(`/admin/location-requests/${id}/approve`, { adminNote });
-export const adminRejectLocationRequest = (id, adminNote) =>
+export const adminRejectLocationRequest  = (id, adminNote) =>
   api.patch(`/admin/location-requests/${id}/reject`, { adminNote });

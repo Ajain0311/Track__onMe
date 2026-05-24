@@ -18,6 +18,7 @@ import { isBiometricAvailable, getBiometricLabel } from '../services/biometricAu
 import { validateWifiConnection, getAllowedWifiName } from '../services/wifiService';
 import { validateAttendanceLocation } from '../services/locationService';
 import { hasFaceData } from '../services/faceRecognitionService';
+import { getFaceStatusFromServer } from '../services/api';
 
 const triggerHaptic = (type = 'light') => {
   if (Platform.OS === 'web') return;
@@ -72,6 +73,8 @@ export default function DashboardScreen({ navigation }) {
   const [checkOutPressed, setCheckOutPressed] = useState(false);
   const [connectStatus, setConnectStatus] = useState({ valid: false, message: 'Checking...', type: 'checking' });
   const [faceRegistered, setFaceRegistered] = useState(false);
+  // true = face registered on server (authoritative), false = not registered or unknown
+  const [faceRegisteredOnServer, setFaceRegisteredOnServer] = useState(false);
   const [clockTime, setClockTime] = useState(new Date());
   const [unreadCount, setUnreadCount] = useState(0);
 
@@ -142,7 +145,13 @@ export default function DashboardScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       checkRequirements();
-      if (user?.id) hasFaceData(user.id).then(setFaceRegistered);
+      if (user?.id) {
+        hasFaceData(user.id).then(setFaceRegistered);
+        // Also check server — this is the authoritative source
+        getFaceStatusFromServer()
+          .then((r) => setFaceRegisteredOnServer(!!r.data?.registered))
+          .catch(() => {}); // fail-soft — don't block the dashboard
+      }
       // Silently refresh status so the timer & button states stay accurate
       // without resetting the loading skeleton every time.
       fetchStatus({ silent: true });
@@ -166,7 +175,12 @@ export default function DashboardScreen({ navigation }) {
     initGoals(user?.id);
     // Run status + requirements in parallel instead of sequentially
     Promise.all([fetchStatus(), checkRequirements()]);
-    if (user?.id) hasFaceData(user.id).then(setFaceRegistered);
+    if (user?.id) {
+        hasFaceData(user.id).then(setFaceRegistered);
+        getFaceStatusFromServer()
+          .then((r) => setFaceRegisteredOnServer(!!r.data?.registered))
+          .catch(() => {});
+      }
   }, []);
 
   // ── Animate cards in after load ──
@@ -543,14 +557,20 @@ export default function DashboardScreen({ navigation }) {
           </LinearGradient>
         )}
 
-        {/* ── Face not registered ── */}
-        {!effectiveIsCheckedIn && !faceRegistered && (
+        {/* ── Face not registered (native: check both local + server) ── */}
+        {!effectiveIsCheckedIn && Platform.OS !== 'web' && (!faceRegistered || !faceRegisteredOnServer) && (
           <LinearGradient colors={[g.coralSoft, grad.card[1]]} style={[s.infoCard, { borderColor: g.coral }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={{ fontSize: 18, marginRight: 10 }}>👤</Text>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: g.coral, fontSize: 13, fontWeight: '700' }}>Face Not Registered</Text>
-                <Text style={{ color: g.textMuted, fontSize: 11, marginTop: 2 }}>Register your face in Settings before checking in</Text>
+                <Text style={{ color: g.coral, fontSize: 13, fontWeight: '700' }}>
+                  {!faceRegistered ? 'Face Not Registered' : 'Face Not Synced to Server'}
+                </Text>
+                <Text style={{ color: g.textMuted, fontSize: 11, marginTop: 2 }}>
+                  {!faceRegistered
+                    ? 'Register your face in Settings → Register Face'
+                    : 'Your face data needs to be re-registered and synced. Go to Settings → Register Face'}
+                </Text>
               </View>
               <TouchableOpacity
                 style={{ backgroundColor: g.coral, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 }}

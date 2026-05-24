@@ -20,6 +20,7 @@ const locationRoutes        = require('./routes/locations');
 const locationRequestRoutes = require('./routes/locationRequests');
 const notificationRoutes    = require('./routes/notifications');
 const activityRoutes        = require('./routes/activity');
+const faceRoutes            = require('./routes/face');
 
 const app  = express();
 const PORT = process.env.PORT || 5000;
@@ -52,6 +53,7 @@ app.get('/health',  (_req, res) => res.json({ status: 'ok', uptime: process.upti
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
 app.use('/api',                    attendanceRoutes);        // /api/checkin, /api/status, /api/me …
+app.use('/api/face',               faceRoutes);             // /api/face/register, /api/face/verify …
 app.use('/api/locations',          locationRoutes);
 app.use('/api/location-requests',  locationRequestRoutes);
 app.use('/api/notifications',      notificationRoutes);

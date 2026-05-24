@@ -18,8 +18,10 @@ import {
   extractFaceFeatures,
   averageFeatures,
   saveFaceData,
+  deleteFaceData,
   hasFaceData,
 } from '../services/faceRecognitionService';
+import { registerFaceOnServer, getApiErrorMessage } from '../services/api';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const CAMERA_SIZE = Math.min(screenWidth - 48, screenHeight * 0.42, 380);
@@ -198,11 +200,11 @@ export default function FaceRegistrationScreen({ navigation }) {
 
   // ── Manual capture button ───────────────────────────────────────────────────
   const handleCapture = async () => {
+    // Web: face detection is not available — face registration is not supported.
+    // Web users authenticate with their account password instead (see FaceVerificationScreen).
+    // DO NOT create fake/empty face data here.
     if (isWeb) {
-      // On web — simulate with no face data
-      setCapturedFeatures({ __v: 2, ratios: {}, sampleCount: 0 });
-      setCapturedUri(null);
-      setStage('preview');
+      showToast('Face registration is not available on web. Web check-in uses your password.', 'error');
       return;
     }
     if (!faceDetected || !currentFaceRef.current) {
@@ -244,14 +246,64 @@ export default function FaceRegistrationScreen({ navigation }) {
         setIsRegistering(false);
         return;
       }
+
+      // Validate that we have real face data (non-empty ratios)
+      const ratioCount = Object.keys(capturedFeatures.ratios || {}).length;
+      if (ratioCount < 3) {
+        showToast('Insufficient face data captured. Please retake in better lighting.', 'error');
+        setIsRegistering(false);
+        return;
+      }
+
+      // 1. Save locally to AsyncStorage (for fast local pre-screening during verification)
       await saveFaceData(user.id, capturedFeatures, capturedUri);
-      showToast('Face registered successfully!', 'success');
+
+      // 2. Save to server (REQUIRED — backend verifies against this data on check-in/out)
+      try {
+        await registerFaceOnServer(capturedFeatures);
+      } catch (serverErr) {
+        // Local save succeeded but server sync failed
+        // Remove local data to keep in sync (user should retry)
+        try { await deleteFaceData(user.id); } catch (_) {}
+        showToast(
+          'Could not sync face data with server: ' + getApiErrorMessage(serverErr) +
+          '. Please check your connection and try again.',
+          'error'
+        );
+        setIsRegistering(false);
+        return;
+      }
+
+      showToast('Face registered and synced to server!', 'success');
       setTimeout(() => navigation.goBack(), 1500);
     } catch (err) {
       showToast('Failed to save face data. Try again.', 'error');
       setIsRegistering(false);
     }
   };
+
+  // ── Web: face registration is not supported ──────────────────────────────────
+  // Web users check in/out using server-side password verification instead.
+  if (isWeb) {
+    return (
+      <LinearGradient colors={grad.screen} style={styles.container}>
+        <View style={styles.centered}>
+          <Text style={{ fontSize: 52, marginBottom: 16 }}>🌐</Text>
+          <Text style={[styles.title, { color: g.text, textAlign: 'center' }]}>Not Available on Web</Text>
+          <Text style={[styles.hint, { color: g.textMuted, textAlign: 'center', marginBottom: 20 }]}>
+            Face registration requires the mobile app.{'\n\n'}
+            When checking in on web, you will be asked to re-enter your account password — that serves as your identity verification.
+          </Text>
+          <TouchableOpacity
+            style={[styles.btn, { backgroundColor: g.accent }]}
+            onPress={() => navigation.goBack()}
+          >
+            <Text style={styles.btnText}>← Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
+    );
+  }
 
   // ── Permission gates (native only — browser handles permissions automatically)
   if (!isWeb) {
