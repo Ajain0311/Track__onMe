@@ -164,6 +164,14 @@ const verifyWeb = asyncHandler(async (req, res) => {
     verifiedUserId = data.user.id;
   } catch (err) {
     if (err instanceof AppError) throw err;
+    // Detect missing env var — return a clear 503 instead of a confusing 403
+    if (err.message?.includes('SUPABASE_ANON_KEY')) {
+      logger.error('SUPABASE_ANON_KEY not configured', { userId });
+      throw AppError.internal(
+        'Web password verification is not configured on this server. ' +
+        'Ask your administrator to set SUPABASE_ANON_KEY in the backend environment variables.'
+      );
+    }
     logger.warn('Web password verification error', { userId, error: err.message });
     throw AppError.forbidden('Password verification failed. Please try again.');
   }
