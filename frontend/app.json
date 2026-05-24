@@ -21,6 +21,7 @@
         "backgroundColor": "#06060f"
       },
       "package": "com.attendtrack.app",
+      "kotlinVersion": "1.9.25",
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
