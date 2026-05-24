@@ -4,11 +4,15 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity,
   StyleSheet, ActivityIndicator, KeyboardAvoidingView,
-  Platform, ScrollView, Animated,
+  Platform, ScrollView, Animated, Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { signIn, signUp, sendPasswordReset } from '../services/authService';
 import useThemeStore from '../store/themeStore';
+
+// ── Android APK download URL ──────────────────────────────────────────────────
+// Update this after each EAS build (grab the URL from the EAS dashboard).
+const APK_DOWNLOAD_URL = 'https://expo.dev/artifacts/eas/PENDING_BUILD.apk';
 
 const toAuthEmail = (input) => {
   const t = input.trim().toLowerCase();
@@ -256,6 +260,41 @@ export default function LoginScreen() {
             </View>
           </Animated.View>
 
+          {/* ── Download App banner (web only) ── */}
+          {Platform.OS === 'web' && (
+            <Animated.View style={[ss.downloadBanner, { opacity: fadeAnim }]}>
+              <LinearGradient
+                colors={['rgba(62,232,199,0.12)', 'rgba(79,140,255,0.10)']}
+                style={[ss.downloadCard, { borderColor: 'rgba(62,232,199,0.35)' }]}
+              >
+                <View style={ss.downloadRow}>
+                  <Text style={{ fontSize: 26, marginRight: 12 }}>📱</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[ss.downloadTitle, { color: g.text }]}>
+                      Get the Android App
+                    </Text>
+                    <Text style={[ss.downloadSub, { color: g.textMuted }]}>
+                      Face biometric check-in · works offline
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    style={[ss.downloadBtn, { backgroundColor: g.mint }]}
+                    onPress={() => {
+                      if (APK_DOWNLOAD_URL.includes('PENDING_BUILD')) {
+                        alert('APK build in progress — check back soon!');
+                      } else {
+                        Linking.openURL(APK_DOWNLOAD_URL);
+                      }
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={ss.downloadBtnText}>⬇ Download</Text>
+                  </TouchableOpacity>
+                </View>
+              </LinearGradient>
+            </Animated.View>
+          )}
+
           {/* Footer */}
           <Animated.View style={[ss.footer, { opacity: fadeAnim }]}>
             <Text style={[ss.footerText, { color: g.textDim }]}>
@@ -329,6 +368,17 @@ const ss = StyleSheet.create({
   switchText: { fontSize: 14, lineHeight: 20 },
   switchLink: { fontWeight: '800' },
 
-  footer: { marginTop: 28, alignItems: 'center' },
+  footer: { marginTop: 16, alignItems: 'center' },
   footerText: { fontSize: 12 },
+
+  downloadBanner: { marginTop: 20 },
+  downloadCard: { borderRadius: 18, padding: 16, borderWidth: 1 },
+  downloadRow: { flexDirection: 'row', alignItems: 'center' },
+  downloadTitle: { fontSize: 15, fontWeight: '800', marginBottom: 3 },
+  downloadSub: { fontSize: 12, lineHeight: 16 },
+  downloadBtn: {
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderRadius: 12, marginLeft: 10,
+  },
+  downloadBtnText: { color: '#fff', fontSize: 13, fontWeight: '800' },
 });
