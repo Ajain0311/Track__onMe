@@ -14,6 +14,7 @@ import useGoalStore from '../store/goalStore';
 import { logOut } from '../services/authService';
 import { getMe } from '../services/api';
 import { hasFaceData, deleteFaceData } from '../services/faceRecognitionService';
+import { deleteFaceFromServer } from '../services/api';
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
@@ -46,25 +47,36 @@ export default function SettingsScreen({ navigation }) {
   const handleRegisterFace = () => navigation.navigate('FaceRegistration');
 
   const handleDeleteFace = () => {
-    Alert.alert(
-      'Delete Face Data?',
-      'This will remove your registered face data. You will need to re-register to use face recognition.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete', style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteFaceData(user.id);
-              setFaceRegistered(false);
-              Alert.alert('Done', 'Face data deleted successfully.');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to delete face data: ' + error.message);
-            }
-          },
-        },
-      ]
-    );
+    const doDelete = async () => {
+      try {
+        await deleteFaceData(user.id);          // local AsyncStorage
+        try { await deleteFaceFromServer(); } catch (_) {} // server — best-effort
+        setFaceRegistered(false);
+        if (Platform.OS === 'web') {
+          window.alert('Face data deleted successfully.');
+        } else {
+          Alert.alert('Done', 'Face data deleted successfully.');
+        }
+      } catch (error) {
+        if (Platform.OS === 'web') {
+          window.alert('Failed to delete face data: ' + error.message);
+        } else {
+          Alert.alert('Error', 'Failed to delete face data: ' + error.message);
+        }
+      }
+    };
+    if (Platform.OS === 'web') {
+      if (window.confirm('Delete face data? You will need to re-register.')) doDelete();
+    } else {
+      Alert.alert(
+        'Delete Face Data?',
+        'This will remove your registered face data. You will need to re-register to use face recognition.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: doDelete },
+        ]
+      );
+    }
   };
 
   const handleResetData = () => {
@@ -238,27 +250,51 @@ export default function SettingsScreen({ navigation }) {
           </LinearGradient>
         </View>
 
-        {/* Face Recognition */}
+        {/* Face Recognition — native only; web uses password */}
         <View style={st.section}>
-          <Text style={[st.sectionTitle, { color: g.textMuted }]}>FACE RECOGNITION</Text>
+          <Text style={[st.sectionTitle, { color: g.textMuted }]}>
+            {Platform.OS === 'web' ? 'IDENTITY VERIFICATION' : 'FACE RECOGNITION'}
+          </Text>
           <LinearGradient colors={grad.card} style={[st.sectionCard, { borderColor: g.border }]}>
-            <SettingRow
-              icon="👤"
-              title={faceRegistered ? 'Face Registered' : 'Register Your Face'}
-              subtitle={faceRegistered ? 'Face recognition is active' : 'Required for check-in/out'}
-              onPress={handleRegisterFace}
-              rightElement={
-                <View style={[st.statusBadge, { backgroundColor: faceRegistered ? g.mintSoft : g.coralSoft, borderColor: faceRegistered ? 'rgba(62,232,199,0.3)' : 'rgba(255,123,156,0.3)' }]}>
-                  <Text style={{ color: faceRegistered ? g.mint : g.coral, fontSize: 11, fontWeight: '700' }}>
-                    {faceRegistered ? 'Active' : 'Required'}
-                  </Text>
+            {Platform.OS === 'web' ? (
+              /* ── Web: password-based verification info ── */
+              <View style={{ padding: 16, gap: 6 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+                  <Text style={{ fontSize: 20 }}>🔑</Text>
+                  <Text style={{ color: g.text, fontSize: 15, fontWeight: '700' }}>Password Verification</Text>
+                  <View style={[st.statusBadge, { backgroundColor: g.mintSoft, borderColor: 'rgba(62,232,199,0.3)', marginLeft: 'auto' }]}>
+                    <Text style={{ color: g.mint, fontSize: 11, fontWeight: '700' }}>Active</Text>
+                  </View>
                 </View>
-              }
-            />
-            {faceRegistered && (
+                <Text style={{ color: g.textMuted, fontSize: 13, lineHeight: 20 }}>
+                  On web, your identity is verified using your account password each time you check in or out. No camera or face registration is required.
+                </Text>
+                <Text style={{ color: g.textDim, fontSize: 12, marginTop: 4 }}>
+                  💡 Use the mobile app for biometric (face) check-in.
+                </Text>
+              </View>
+            ) : (
+              /* ── Native: face registration flow ── */
               <>
-                <View style={[st.divider, { backgroundColor: g.border }]} />
-                <SettingRow icon="🗑️" title="Delete Face Data" subtitle="Remove registered face data" onPress={handleDeleteFace} danger />
+                <SettingRow
+                  icon="👤"
+                  title={faceRegistered ? 'Face Registered' : 'Register Your Face'}
+                  subtitle={faceRegistered ? 'Face recognition is active' : 'Required for check-in/out'}
+                  onPress={handleRegisterFace}
+                  rightElement={
+                    <View style={[st.statusBadge, { backgroundColor: faceRegistered ? g.mintSoft : g.coralSoft, borderColor: faceRegistered ? 'rgba(62,232,199,0.3)' : 'rgba(255,123,156,0.3)' }]}>
+                      <Text style={{ color: faceRegistered ? g.mint : g.coral, fontSize: 11, fontWeight: '700' }}>
+                        {faceRegistered ? 'Active' : 'Required'}
+                      </Text>
+                    </View>
+                  }
+                />
+                {faceRegistered && (
+                  <>
+                    <View style={[st.divider, { backgroundColor: g.border }]} />
+                    <SettingRow icon="🗑️" title="Delete Face Data" subtitle="Remove registered face data from device and server" onPress={handleDeleteFace} danger />
+                  </>
+                )}
               </>
             )}
           </LinearGradient>
