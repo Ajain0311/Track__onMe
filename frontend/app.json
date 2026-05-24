@@ -20,7 +20,11 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#06060f"
       },
-      "package": "com.attendtrack.app"
+      "package": "com.attendtrack.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -33,6 +37,12 @@
           "cameraPermission": "Allow AttendTrack to access your camera for face recognition."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "2c27442f-398d-4b20-b9f6-08c817e494c4"
+      }
+    },
+    "owner": "ajain0311"
   }
 }
