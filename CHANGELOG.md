@@ -1,5 +1,29 @@
 # CHANGELOG
 
+## v2.0.1 — Security hardening + UX polish (2026-05-24)
+
+### Security
+- **Server-side location authorization** for `POST /api/checkin`: now requires
+  a valid `locationId`, verifies the user has access (global / user_locations /
+  user_location_access), and enforces a 1.5× geofence when GPS is provided.
+  Closes a hole where any authenticated user could `POST {}` and create an
+  attendance row from anywhere.
+- **Web check-in/out second factor**: previously skipped entirely on web.
+  Now requires the account password (re-auth via
+  `supabase.auth.signInWithPassword`) before the request reaches the server.
+
+### UI/UX (skill applied)
+- `injectWebStyles()` in `App.js` — antialiased fonts, `focus-visible` rings,
+  `cursor: pointer`, 180 ms button transition, `prefers-reduced-motion`
+  respect, polished scrollbar, desktop ambient radial backdrop at ≥ 1024 px.
+- New components: `ResponsiveContainer`, `PressableCard`.
+
+### Documentation
+- Rewrote `README.md` as an honest project document: separate working /
+  partial / mock / planned matrices; explicit "security risks still present"
+  section; troubleshooting and contribution guidelines; folder structure and
+  API examples.
+
 ## v2.0.0 — Production-grade rewrite (2026-05)
 
 Major refactor introducing clean architecture, RBAC, audit logging, notifications,
