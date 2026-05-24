@@ -8,6 +8,7 @@ import {
   Dimensions, Platform, ScrollView, Image, Linking,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as FaceDetector from 'expo-face-detector';
 import { LinearGradient } from 'expo-linear-gradient';
 import useThemeStore from '../store/themeStore';
 import useAuthStore from '../store/authStore';
@@ -396,9 +397,9 @@ export default function FaceRegistrationScreen({ navigation }) {
                 facing="front"
                 onFacesDetected={isWeb ? undefined : handleFacesDetected}
                 faceDetectorSettings={isWeb ? undefined : {
-                  mode: 'fast',
-                  detectLandmarks: 'all',
-                  runClassifications: 'all',
+                  mode: FaceDetector.FaceDetectorMode.fast,
+                  detectLandmarks: FaceDetector.FaceDetectorLandmarks.all,
+                  runClassifications: FaceDetector.FaceDetectorClassifications.all,
                   minDetectionInterval: 150,
                   tracking: true,
                 }}

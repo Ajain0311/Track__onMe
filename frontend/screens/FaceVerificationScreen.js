@@ -24,6 +24,7 @@ import {
   Dimensions, Platform, Linking, TextInput,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as FaceDetector from 'expo-face-detector';
 import { LinearGradient } from 'expo-linear-gradient';
 import useThemeStore from '../store/themeStore';
 import useAuthStore from '../store/authStore';
@@ -503,9 +504,9 @@ export default function FaceVerificationScreen({ navigation, route }) {
               facing="front"
               onFacesDetected={handleFacesDetected}
               faceDetectorSettings={{
-                mode: 'fast',
-                detectLandmarks: 'all',
-                runClassifications: 'all',
+                mode: FaceDetector.FaceDetectorMode.fast,
+                detectLandmarks: FaceDetector.FaceDetectorLandmarks.all,
+                runClassifications: FaceDetector.FaceDetectorClassifications.all,
                 minDetectionInterval: 100,
                 tracking: true,
               }}
