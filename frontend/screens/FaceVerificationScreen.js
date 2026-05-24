@@ -160,7 +160,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
       pollActiveRef.current = true;
       try {
         const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.4, skipProcessing: true, exif: false,
+          quality: 0.15, skipProcessing: true, exif: false,
         });
         const result = await FaceDetector.detectFacesAsync(photo.uri, {
           mode: FaceDetector.FaceDetectorMode.fast,
@@ -181,7 +181,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
         handleFacesDetected({ faces: normalized });
       } catch (_) { /* camera busy — skip */ }
       finally { pollActiveRef.current = false; }
-    }, 800);
+    }, 1500);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCameraReady, isWeb, faceDataLoading]);

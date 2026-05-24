@@ -107,7 +107,7 @@ export default function FaceRegistrationScreen({ navigation }) {
       pollActiveRef.current = true;
       try {
         const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.4, skipProcessing: true, exif: false,
+          quality: 0.15, skipProcessing: true, exif: false,
         });
         const result = await FaceDetector.detectFacesAsync(photo.uri, {
           mode: FaceDetector.FaceDetectorMode.fast,
@@ -129,7 +129,7 @@ export default function FaceRegistrationScreen({ navigation }) {
         handleFacesDetected({ faces: normalized });
       } catch (_) { /* camera busy or not ready — skip this tick */ }
       finally { pollActiveRef.current = false; }
-    }, 800);
+    }, 1500);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isCameraReady, isWeb]);

@@ -29,12 +29,10 @@ export const processDetectedFace = (face) => {
 export const validateFacePosition = (face) => {
   if (!face) return { valid: false, message: 'No face detected. Please position your face in the frame.', guidance: 'no_face' };
 
-  if (face.bounds) {
-    const { size } = face.bounds;
-    const faceArea = size.width * size.height;
-    if (faceArea < 8000)  return { valid: false, message: 'Move closer to the camera', guidance: 'move_closer' };
-    if (faceArea > 400000) return { valid: false, message: 'Move back a little', guidance: 'move_back' };
-  }
+  // NOTE: Absolute pixel area checks removed — detectFacesAsync returns face bounds in
+  // full-resolution photo coordinates (e.g. 3024×4032 on a 12 MP sensor), so a normal
+  // selfie face easily exceeds any fixed pixel threshold calibrated for a low-res preview.
+  // Size is validated implicitly: extractFaceFeatures returns null when eyeDist < 20 px.
 
   if (face.yawAngle !== undefined && Math.abs(face.yawAngle) > 35)
     return { valid: false, message: 'Turn to face the camera directly', guidance: 'face_forward' };
