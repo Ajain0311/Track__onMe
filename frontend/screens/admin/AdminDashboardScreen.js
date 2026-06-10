@@ -8,7 +8,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import useThemeStore from '../../store/themeStore';
 import useAuthStore from '../../store/authStore';
-import { adminGetStats, adminGetLocationRequests, adminGetLeaves, getApiErrorMessage } from '../../services/api';
+import { adminGetStats, adminGetLocationRequests, adminGetLeaves, adminGetCorrections, getApiErrorMessage } from '../../services/api';
 
 const StatCard = ({ label, value, color, icon, g, grad, anim }) => (
   <Animated.View style={[
@@ -30,16 +30,18 @@ export default function AdminDashboardScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [pendingRequests, setPendingRequests] = useState(0);
-  const [pendingLeaves, setPendingLeaves]   = useState(0);
+  const [pendingLeaves, setPendingLeaves]       = useState(0);
+  const [pendingCorrections, setPendingCorrections] = useState(0);
   const anims = useRef([0, 1, 2, 3].map(() => new Animated.Value(0))).current;
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [statsRes, reqRes, leavesRes] = await Promise.allSettled([
+      const [statsRes, reqRes, leavesRes, correctionsRes] = await Promise.allSettled([
         adminGetStats(),
         adminGetLocationRequests('pending'),
         adminGetLeaves({ status: 'pending' }),
+        adminGetCorrections({ status: 'pending' }),
       ]);
       if (statsRes.status === 'fulfilled') setStats(statsRes.value.data);
       else setError(getApiErrorMessage(statsRes.reason));
@@ -48,6 +50,9 @@ export default function AdminDashboardScreen({ navigation }) {
       }
       if (leavesRes.status === 'fulfilled') {
         setPendingLeaves(leavesRes.value.data.pendingCount || leavesRes.value.data.leaves?.length || 0);
+      }
+      if (correctionsRes.status === 'fulfilled') {
+        setPendingCorrections(correctionsRes.value.data.pendingCount || correctionsRes.value.data.corrections?.length || 0);
       }
     } finally {
       setLoading(false);
@@ -202,6 +207,30 @@ export default function AdminDashboardScreen({ navigation }) {
                 {pendingLeaves > 0 && (
                   <View style={[st.pendingBadge, { backgroundColor: g.accent }]}>
                     <Text style={{ color: '#fff', fontSize: 12, fontWeight: '900' }}>{pendingLeaves}</Text>
+                  </View>
+                )}
+                <Text style={{ color: g.textDim, fontSize: 20 }}>›</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Correction Requests action */}
+            <TouchableOpacity
+              style={[st.requestsCard, {
+                backgroundColor: pendingCorrections > 0 ? 'rgba(62,232,199,0.08)' : g.glass,
+                borderColor: pendingCorrections > 0 ? 'rgba(62,232,199,0.45)' : g.border,
+              }]}
+              onPress={() => navigation.navigate('AdminCorrections')}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text style={{ fontSize: 28 }}>✏️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[st.actionLabel, { color: g.text }]}>Correction Requests</Text>
+                  <Text style={[st.actionSub, { color: g.textMuted }]}>Review attendance time corrections</Text>
+                </View>
+                {pendingCorrections > 0 && (
+                  <View style={[st.pendingBadge, { backgroundColor: g.mint }]}>
+                    <Text style={{ color: '#000', fontSize: 12, fontWeight: '900' }}>{pendingCorrections}</Text>
                   </View>
                 )}
                 <Text style={{ color: g.textDim, fontSize: 20 }}>›</Text>

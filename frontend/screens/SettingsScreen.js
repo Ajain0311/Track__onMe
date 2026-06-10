@@ -357,6 +357,19 @@ export default function SettingsScreen({ navigation }) {
           </LinearGradient>
         </View>
 
+        {/* Attendance Corrections */}
+        <View style={st.section}>
+          <Text style={[st.sectionTitle, { color: g.textMuted }]}>CORRECTIONS</Text>
+          <LinearGradient colors={grad.card} style={[st.sectionCard, { borderColor: g.border }]}>
+            <SettingRow
+              icon="✏️"
+              title="My Correction Requests"
+              subtitle="View attendance time correction requests"
+              onPress={() => navigation.navigate('MyCorrectionRequests')}
+            />
+          </LinearGradient>
+        </View>
+
         {/* Location Requests */}
         <View style={st.section}>
           <Text style={[st.sectionTitle, { color: g.textMuted }]}>LOCATIONS</Text>

@@ -74,9 +74,14 @@ const staticStyles = StyleSheet.create({
   sessionMain: { flex: 1, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   sessionTimes: { fontSize: 13, fontWeight: '600' },
   sessionDur: { fontSize: 13, fontWeight: '700', fontVariant: ['tabular-nums'] },
+  correctBtn: {
+    alignSelf: 'flex-start', marginTop: 5,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderRadius: 8, borderWidth: 1,
+  },
 });
 
-export default function DailySummaryCard({ day }) {
+export default function DailySummaryCard({ day, onRequestCorrection }) {
   const [open, setOpen] = useState(false);
   const { colors: g, gradients: grad } = useThemeStore();
 
@@ -125,15 +130,27 @@ export default function DailySummaryCard({ day }) {
                 return (
                   <View key={s.id} style={staticStyles.sessionRow}>
                     <View style={[staticStyles.dot, { backgroundColor: done ? g.accent : g.mint }]} />
-                    <View style={staticStyles.sessionMain}>
-                      <Text style={[staticStyles.sessionTimes, { color: g.textMuted }]}>
-                        {formatTime(s.checkInTime)} → {done ? formatTime(s.checkOutTime) : '…'}
-                      </Text>
-                      <Text style={[staticStyles.sessionDur, { color: g.text }]}>
-                        {done && s.totalDuration != null
-                          ? formatHM(s.totalDuration)
-                          : 'In progress'}
-                      </Text>
+                    <View style={{ flex: 1 }}>
+                      <View style={staticStyles.sessionMain}>
+                        <Text style={[staticStyles.sessionTimes, { color: g.textMuted }]}>
+                          {formatTime(s.checkInTime)} → {done ? formatTime(s.checkOutTime) : '…'}
+                        </Text>
+                        <Text style={[staticStyles.sessionDur, { color: g.text }]}>
+                          {done && s.totalDuration != null
+                            ? formatHM(s.totalDuration)
+                            : 'In progress'}
+                        </Text>
+                      </View>
+                      {onRequestCorrection && done && (
+                        <TouchableOpacity
+                          onPress={() => onRequestCorrection(s, date)}
+                          style={[staticStyles.correctBtn, { borderColor: g.accent }]}
+                        >
+                          <Text style={{ color: g.accent, fontSize: 11, fontWeight: '700' }}>
+                            ✎ Request Correction
+                          </Text>
+                        </TouchableOpacity>
+                      )}
                     </View>
                   </View>
                 );

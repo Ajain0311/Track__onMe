@@ -31,10 +31,13 @@ import AdminLocationRequestsScreen from './screens/admin/AdminLocationRequestsSc
 import AdminAuditLogsScreen from './screens/admin/AdminAuditLogsScreen';
 import AdminLiveAttendanceScreen from './screens/admin/AdminLiveAttendanceScreen';
 import AdminLeavesScreen from './screens/admin/AdminLeavesScreen';
+import AdminCorrectionsScreen from './screens/admin/AdminCorrectionsScreen';
 import LocationRequestScreen from './screens/LocationRequestScreen';
 import MyLocationRequestsScreen from './screens/MyLocationRequestsScreen';
 import LeaveRequestScreen from './screens/LeaveRequestScreen';
 import MyLeavesScreen from './screens/MyLeavesScreen';
+import AttendanceCorrectionScreen from './screens/AttendanceCorrectionScreen';
+import MyCorrectionRequestsScreen from './screens/MyCorrectionRequestsScreen';
 import NotificationsScreen from './screens/NotificationsScreen';
 import ActivityScreen from './screens/ActivityScreen';
 import ChangePasswordScreen from './screens/ChangePasswordScreen';
@@ -292,6 +295,9 @@ export default function App() {
                 <Stack.Screen name="AdminAuditLogs" component={AdminAuditLogsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminLiveAttendance" component={AdminLiveAttendanceScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminLeaves" component={AdminLeavesScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AdminCorrections" component={AdminCorrectionsScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AttendanceCorrection" component={AttendanceCorrectionScreen} options={{ animation: 'slide_from_bottom' }} />
+                <Stack.Screen name="MyCorrectionRequests" component={MyCorrectionRequestsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="MyLeaves" component={MyLeavesScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="LeaveRequest" component={LeaveRequestScreen} options={{ animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="LocationRequest" component={LocationRequestScreen} options={{ animation: 'slide_from_bottom' }} />

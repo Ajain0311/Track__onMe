@@ -151,6 +151,20 @@ export const adminApproveLocationRequest = (id, adminNote) =>
 export const adminRejectLocationRequest  = (id, adminNote) =>
   api.patch(`/admin/location-requests/${id}/reject`, { adminNote });
 
+// ─── Attendance Corrections (user) ───────────────────────────────────────────
+
+export const getMyCorrections    = (params = {}) => api.get('/corrections', { params });
+export const submitCorrection    = (payload) => api.post('/corrections', payload);
+export const cancelCorrection    = (id) => api.delete(`/corrections/${id}`);
+
+// ─── Attendance Corrections (admin) ──────────────────────────────────────────
+
+export const adminGetCorrections    = (params = {}) => api.get('/admin/corrections', { params });
+export const adminApproveCorrection = (id, adminNote) =>
+  api.patch(`/admin/corrections/${id}/approve`, { adminNote });
+export const adminRejectCorrection  = (id, adminNote) =>
+  api.patch(`/admin/corrections/${id}/reject`, { adminNote });
+
 // ─── Leaves (user) ────────────────────────────────────────────────────────────
 
 export const getLeaveTypes   = () => api.get('/leaves/types');

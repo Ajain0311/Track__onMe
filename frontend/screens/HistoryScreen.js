@@ -19,7 +19,7 @@ const formatHM = (totalMinutes) => {
   return `${h}h ${min.toString().padStart(2, '0')}m`;
 };
 
-export default function HistoryScreen() {
+export default function HistoryScreen({ navigation }) {
   const [days, setDays] = useState([]);
   const [filteredDays, setFilteredDays] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -220,7 +220,14 @@ export default function HistoryScreen() {
         style={ss.list}
         data={filteredDays}
         keyExtractor={(item) => item.date}
-        renderItem={({ item }) => <DailySummaryCard day={item} />}
+        renderItem={({ item }) => (
+            <DailySummaryCard
+              day={item}
+              onRequestCorrection={(session, date) =>
+                navigation.navigate('AttendanceCorrection', { session, date })
+              }
+            />
+          )}
         contentContainerStyle={filteredDays.length === 0 ? ss.emptyContainer : ss.listContent}
         refreshControl={
           <RefreshControl

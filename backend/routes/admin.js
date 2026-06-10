@@ -19,6 +19,11 @@ const {
   approve: approveLeave,
   reject:  rejectLeave,
 } = require('../controllers/leaveController');
+const {
+  listAllAdminCorrections,
+  approve: approveCorrection,
+  reject:  rejectCorrection,
+} = require('../controllers/correctionController');
 
 // All admin routes require authentication + admin (or manager / super_admin) role
 router.use(verifyToken, requireRole(['admin', 'manager']));
@@ -79,6 +84,17 @@ router.patch('/leaves/:id/approve',
 router.patch('/leaves/:id/reject',
   validate({ params: { id: { type: 'uuid', required: true } } }),
   rejectLeave,
+);
+
+// ─── Attendance Corrections ───────────────────────────────────────────────────
+router.get('/corrections', listAllAdminCorrections);
+router.patch('/corrections/:id/approve',
+  validate({ params: { id: { type: 'uuid', required: true } } }),
+  approveCorrection,
+);
+router.patch('/corrections/:id/reject',
+  validate({ params: { id: { type: 'uuid', required: true } } }),
+  rejectCorrection,
 );
 
 // ─── Audit Logs ───────────────────────────────────────────────────────────────
