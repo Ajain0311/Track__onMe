@@ -24,6 +24,7 @@ const faceRoutes            = require('./routes/face');
 const leaveRoutes           = require('./routes/leaves');
 const correctionRoutes      = require('./routes/corrections');
 const departmentRoutes      = require('./routes/departments');
+const reportRoutes          = require('./routes/reports');
 
 const app  = express();
 const PORT = process.env.PORT || 5000;
@@ -64,6 +65,7 @@ app.use('/api/activity',           activityRoutes);
 app.use('/api/leaves',             leaveRoutes);
 app.use('/api/corrections',        correctionRoutes);
 app.use('/api/departments',        departmentRoutes);
+app.use('/api/admin/reports',      reportRoutes);            // report endpoints
 app.use('/api/admin',              adminRoutes);             // protected internally
 
 // ─── 404 + error handler (must be last) ───────────────────────────────────────

@@ -142,6 +142,17 @@ export const getMyActivity = (limit = 50) =>
 export const adminGetAuditLogs = (params = {}) =>
   api.get('/admin/audit-logs', { params });
 
+// ─── Reports (admin) ─────────────────────────────────────────────────────────
+
+export const adminGetAttendanceReport = (params = {}) =>
+  api.get('/admin/reports/attendance', { params });
+export const adminGetLeaveReport = (params = {}) =>
+  api.get('/admin/reports/leaves', { params });
+export const getReportCsvUrl = (type, params = {}) => {
+  const qs = new URLSearchParams({ ...params }).toString();
+  return `${BASE_URL}/admin/reports/${type}/csv?${qs}`;
+};
+
 // ─── Location Requests (admin) ────────────────────────────────────────────────
 
 export const adminGetLocationRequests    = (status = 'pending') =>

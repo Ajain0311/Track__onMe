@@ -237,6 +237,22 @@ export default function AdminDashboardScreen({ navigation }) {
               </View>
             </TouchableOpacity>
 
+            {/* Reports action */}
+            <TouchableOpacity
+              style={[st.requestsCard, { backgroundColor: 'rgba(139,124,255,0.08)', borderColor: 'rgba(139,124,255,0.35)' }]}
+              onPress={() => navigation.navigate('AdminReports')}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text style={{ fontSize: 28 }}>📊</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[st.actionLabel, { color: g.text }]}>Reports & Export</Text>
+                  <Text style={[st.actionSub, { color: g.textMuted }]}>Attendance & leave reports, CSV export</Text>
+                </View>
+                <Text style={{ color: g.textDim, fontSize: 20 }}>›</Text>
+              </View>
+            </TouchableOpacity>
+
             {/* Departments action */}
             <TouchableOpacity
               style={[st.requestsCard, { backgroundColor: 'rgba(79,172,254,0.08)', borderColor: 'rgba(79,172,254,0.35)' }]}

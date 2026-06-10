@@ -33,6 +33,7 @@ import AdminLiveAttendanceScreen from './screens/admin/AdminLiveAttendanceScreen
 import AdminLeavesScreen from './screens/admin/AdminLeavesScreen';
 import AdminCorrectionsScreen from './screens/admin/AdminCorrectionsScreen';
 import AdminDepartmentsScreen from './screens/admin/AdminDepartmentsScreen';
+import AdminReportsScreen from './screens/admin/AdminReportsScreen';
 import EditProfileScreen from './screens/EditProfileScreen';
 import LeaveBalanceScreen from './screens/LeaveBalanceScreen';
 import LocationRequestScreen from './screens/LocationRequestScreen';
@@ -310,6 +311,7 @@ export default function App() {
                 <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminDepartments" component={AdminDepartmentsScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AdminReports" component={AdminReportsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="LeaveBalance" component={LeaveBalanceScreen} options={{ animation: 'slide_from_right' }} />
               </>
             ) : (
