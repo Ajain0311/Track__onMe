@@ -19,6 +19,7 @@ const mapDept = (r) => ({
 
 const mapProfile = (r) => ({
   userId:        r.user_id,
+  email:         r.email ?? null,
   displayName:   r.display_name ?? null,
   phone:         r.phone ?? null,
   departmentId:  r.department_id ?? null,
@@ -151,13 +152,37 @@ const upsertProfile = async (userId, patch) => {
   return mapProfile(data);
 };
 
-// Admin: get all profiles enriched with email
+// Admin: get all profiles enriched with email from auth
 const getAllProfiles = async () => {
-  const { data, error } = await supabase
-    .from('employee_profiles')
-    .select('*, departments(name, color)');
-  if (error) throw new Error(error.message);
-  return data.map(mapProfile);
+  const [profilesRes, usersRes] = await Promise.all([
+    supabase.from('employee_profiles').select('*, departments(name, color)'),
+    supabase.auth.admin.listUsers({ perPage: 1000 }),
+  ]);
+  if (profilesRes.error) throw new Error(profilesRes.error.message);
+  if (usersRes.error) throw new Error(usersRes.error.message);
+
+  const emailMap = Object.fromEntries(
+    (usersRes.data.users || []).map((u) => [u.id, u.email])
+  );
+
+  // Include users who have no profile yet
+  const profiledIds = new Set((profilesRes.data || []).map((p) => p.user_id));
+  const unprofiledUsers = (usersRes.data.users || [])
+    .filter((u) => !profiledIds.has(u.id))
+    .map((u) => ({ user_id: u.id, email: u.email }));
+
+  const profiles = (profilesRes.data || []).map((p) =>
+    mapProfile({ ...p, email: emailMap[p.user_id] })
+  );
+  const unprofiled = unprofiledUsers.map((u) => ({
+    userId: u.user_id, email: u.email,
+    displayName: null, phone: null, departmentId: null,
+    departmentName: null, departmentColor: null,
+    designation: null, employeeId: null, joinedDate: null, bio: null,
+    createdAt: null, updatedAt: null,
+  }));
+
+  return [...profiles, ...unprofiled];
 };
 
 // Admin: set a user's department directly

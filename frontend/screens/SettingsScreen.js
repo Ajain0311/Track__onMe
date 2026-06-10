@@ -347,6 +347,13 @@ export default function SettingsScreen({ navigation }) {
               subtitle="Name, phone, designation, department"
               onPress={() => navigation.navigate('EditProfile')}
             />
+            <View style={[st.divider, { backgroundColor: g.border }]} />
+            <SettingRow
+              icon="🏢"
+              title="Employee Directory"
+              subtitle="Browse all team members"
+              onPress={() => navigation.navigate('EmployeeDirectory')}
+            />
           </LinearGradient>
         </View>
 

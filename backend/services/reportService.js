@@ -57,17 +57,12 @@ const fetchAttendanceReport = async ({ startDate, endDate, userId, departmentId,
   const { data: rows, error } = await query;
   if (error) throw new Error(error.message);
 
-  // Resolve emails from profiles table (best-effort)
+  // Resolve emails from auth admin API (best-effort)
   let emailMap = {};
-  const userIds = [...new Set((rows || []).map((r) => r.user_id))];
-  if (userIds.length > 0) {
-    const { data: profiles } = await supabase
-      .from('user_roles')
-      .select('user_id, email')
-      .in('user_id', userIds)
-      .throwOnError();
-    (profiles || []).forEach((p) => { emailMap[p.user_id] = p.email; });
-  }
+  try {
+    const { data: usersData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    (usersData?.users || []).forEach((u) => { emailMap[u.id] = u.email; });
+  } catch (_) { /* non-fatal */ }
 
   // Resolve department names if filtering by dept
   let deptUserIds = null;
@@ -171,16 +166,12 @@ const fetchLeaveReport = async ({ startDate, endDate, userId, status } = {}) => 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
 
-  // Resolve emails
-  const userIds = [...new Set((data || []).map((r) => r.user_id))];
+  // Resolve emails from auth admin API (best-effort)
   let emailMap = {};
-  if (userIds.length > 0) {
-    const { data: profiles } = await supabase
-      .from('user_roles')
-      .select('user_id, email')
-      .in('user_id', userIds);
-    (profiles || []).forEach((p) => { emailMap[p.user_id] = p.email; });
-  }
+  try {
+    const { data: usersData } = await supabase.auth.admin.listUsers({ perPage: 1000 });
+    (usersData?.users || []).forEach((u) => { emailMap[u.id] = u.email; });
+  } catch (_) { /* non-fatal */ }
 
   return (data || []).map((r) => ({
     userId:    r.user_id,
