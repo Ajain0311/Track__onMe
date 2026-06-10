@@ -37,10 +37,14 @@ router.get('/attendance/daily', verifyToken, getAttendanceDaily);
 router.get('/attendance',       verifyToken, getAttendance);
 router.get('/status',           verifyToken, getStatus);
 
-// GET /api/me — identity + role
+// GET /api/me — identity + role + profile
 router.get('/me', verifyToken, asyncHandler(async (req, res) => {
-  const role = await getUserRole(req.user.id);
-  res.json({ id: req.user.id, email: req.user.email, role });
+  const { getProfile } = require('../services/departmentService');
+  const [role, profile] = await Promise.all([
+    getUserRole(req.user.id),
+    getProfile(req.user.id).catch(() => null),
+  ]);
+  res.json({ id: req.user.id, email: req.user.email, role, profile });
 }));
 
 // POST /api/me/track-login — frontend calls once on fresh login to record activity

@@ -151,6 +151,22 @@ export const adminApproveLocationRequest = (id, adminNote) =>
 export const adminRejectLocationRequest  = (id, adminNote) =>
   api.patch(`/admin/location-requests/${id}/reject`, { adminNote });
 
+// ─── Departments + Profiles (user) ───────────────────────────────────────────
+
+export const getDepartments    = () => api.get('/departments');
+export const getMyProfile      = () => api.get('/departments/profile');
+export const updateMyProfile   = (patch) => api.patch('/departments/profile', patch);
+
+// ─── Departments + Profiles (admin) ──────────────────────────────────────────
+
+export const adminGetDepartments    = () => api.get('/admin/departments');
+export const adminCreateDepartment  = (payload) => api.post('/admin/departments', payload);
+export const adminUpdateDepartment  = (id, payload) => api.put(`/admin/departments/${id}`, payload);
+export const adminDeleteDepartment  = (id) => api.delete(`/admin/departments/${id}`);
+export const adminGetProfiles       = () => api.get('/admin/profiles');
+export const adminSetUserDepartment = (userId, departmentId) =>
+  api.patch(`/admin/users/${userId}/department`, { departmentId });
+
 // ─── Attendance Corrections (user) ───────────────────────────────────────────
 
 export const getMyCorrections    = (params = {}) => api.get('/corrections', { params });

@@ -337,6 +337,19 @@ export default function SettingsScreen({ navigation }) {
           </LinearGradient>
         </View>
 
+        {/* Profile */}
+        <View style={st.section}>
+          <Text style={[st.sectionTitle, { color: g.textMuted }]}>PROFILE</Text>
+          <LinearGradient colors={grad.card} style={[st.sectionCard, { borderColor: g.border }]}>
+            <SettingRow
+              icon="👤"
+              title="Edit Profile"
+              subtitle="Name, phone, designation, department"
+              onPress={() => navigation.navigate('EditProfile')}
+            />
+          </LinearGradient>
+        </View>
+
         {/* Leaves */}
         <View style={st.section}>
           <Text style={[st.sectionTitle, { color: g.textMuted }]}>LEAVES</Text>

@@ -32,6 +32,8 @@ import AdminAuditLogsScreen from './screens/admin/AdminAuditLogsScreen';
 import AdminLiveAttendanceScreen from './screens/admin/AdminLiveAttendanceScreen';
 import AdminLeavesScreen from './screens/admin/AdminLeavesScreen';
 import AdminCorrectionsScreen from './screens/admin/AdminCorrectionsScreen';
+import AdminDepartmentsScreen from './screens/admin/AdminDepartmentsScreen';
+import EditProfileScreen from './screens/EditProfileScreen';
 import LocationRequestScreen from './screens/LocationRequestScreen';
 import MyLocationRequestsScreen from './screens/MyLocationRequestsScreen';
 import LeaveRequestScreen from './screens/LeaveRequestScreen';
@@ -305,6 +307,8 @@ export default function App() {
                 <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="Activity" component={ActivityScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} options={{ animation: 'slide_from_bottom' }} />
+                <Stack.Screen name="EditProfile" component={EditProfileScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AdminDepartments" component={AdminDepartmentsScreen} options={{ animation: 'slide_from_right' }} />
               </>
             ) : (
               <Stack.Screen name="Login" component={LoginScreen} />

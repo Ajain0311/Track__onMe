@@ -24,6 +24,11 @@ const {
   approve: approveCorrection,
   reject:  rejectCorrection,
 } = require('../controllers/correctionController');
+const {
+  adminListDepartments, adminGetDepartment,
+  adminCreateDepartment, adminUpdateDepartment, adminDeleteDepartment,
+  adminListProfiles, adminSetUserDepartment,
+} = require('../controllers/departmentController');
 
 // All admin routes require authentication + admin (or manager / super_admin) role
 router.use(verifyToken, requireRole(['admin', 'manager']));
@@ -95,6 +100,30 @@ router.patch('/corrections/:id/approve',
 router.patch('/corrections/:id/reject',
   validate({ params: { id: { type: 'uuid', required: true } } }),
   rejectCorrection,
+);
+
+// ─── Departments ─────────────────────────────────────────────────────────────
+const deptBodySchema = {
+  name:        { type: 'string', required: true, min: 1, max: 100 },
+  description: { type: 'string', max: 500 },
+  color:       { type: 'string', max: 20 },
+  managerId:   { type: 'uuid' },
+  isActive:    { type: 'boolean' },
+};
+router.get('/departments',        adminListDepartments);
+router.get('/departments/:id',    validate({ params: { id: { type: 'uuid', required: true } } }), adminGetDepartment);
+router.post('/departments',       validate({ body: deptBodySchema }), adminCreateDepartment);
+router.put('/departments/:id',    validate({ params: { id: { type: 'uuid', required: true } } }), adminUpdateDepartment);
+router.delete('/departments/:id', validate({ params: { id: { type: 'uuid', required: true } } }), adminDeleteDepartment);
+
+// ─── Employee Profiles ────────────────────────────────────────────────────────
+router.get('/profiles', adminListProfiles);
+router.patch('/users/:userId/department',
+  validate({
+    params: { userId:       { type: 'uuid', required: true } },
+    body:   { departmentId: { type: 'uuid' } },
+  }),
+  adminSetUserDepartment,
 );
 
 // ─── Audit Logs ───────────────────────────────────────────────────────────────
