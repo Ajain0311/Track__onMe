@@ -18,6 +18,8 @@ const {
   listAllAdminLeaves,
   approve: approveLeave,
   reject:  rejectLeave,
+  adminSetAllowance,
+  adminGetUserBalance,
 } = require('../controllers/leaveController');
 const {
   listAllAdminCorrections,
@@ -89,6 +91,12 @@ router.patch('/leaves/:id/approve',
 router.patch('/leaves/:id/reject',
   validate({ params: { id: { type: 'uuid', required: true } } }),
   rejectLeave,
+);
+
+router.post('/leaves/allowances', adminSetAllowance);
+router.get('/users/:userId/leave-balance',
+  validate({ params: { userId: { type: 'uuid', required: true } } }),
+  adminGetUserBalance,
 );
 
 // ─── Attendance Corrections ───────────────────────────────────────────────────

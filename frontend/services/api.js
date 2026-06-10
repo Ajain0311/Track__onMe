@@ -183,15 +183,19 @@ export const adminRejectCorrection  = (id, adminNote) =>
 
 // ─── Leaves (user) ────────────────────────────────────────────────────────────
 
-export const getLeaveTypes   = () => api.get('/leaves/types');
-export const getMyLeaves     = (params = {}) => api.get('/leaves', { params });
-export const submitLeave     = (payload) => api.post('/leaves', payload);
-export const cancelLeave     = (id) => api.delete(`/leaves/${id}`);
+export const getLeaveTypes    = () => api.get('/leaves/types');
+export const getMyLeaves      = (params = {}) => api.get('/leaves', { params });
+export const getLeaveBalance  = (year) => api.get('/leaves/balance', { params: { year } });
+export const submitLeave      = (payload) => api.post('/leaves', payload);
+export const cancelLeave      = (id) => api.delete(`/leaves/${id}`);
 
 // ─── Leaves (admin) ───────────────────────────────────────────────────────────
 
-export const adminGetLeaves     = (params = {}) => api.get('/admin/leaves', { params });
-export const adminApproveLeave  = (id, adminNote) =>
+export const adminGetLeaves        = (params = {}) => api.get('/admin/leaves', { params });
+export const adminApproveLeave     = (id, adminNote) =>
   api.patch(`/admin/leaves/${id}/approve`, { adminNote });
-export const adminRejectLeave   = (id, adminNote) =>
+export const adminRejectLeave      = (id, adminNote) =>
   api.patch(`/admin/leaves/${id}/reject`, { adminNote });
+export const adminSetLeaveAllowance = (payload) => api.post('/admin/leaves/allowances', payload);
+export const adminGetUserLeaveBalance = (userId, year) =>
+  api.get(`/admin/users/${userId}/leave-balance`, { params: { year } });

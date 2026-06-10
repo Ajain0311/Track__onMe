@@ -5,7 +5,7 @@ const router  = express.Router();
 const { verifyToken } = require('../middleware/auth');
 const { validate }    = require('../middleware/validate');
 const {
-  listLeaveTypes, listMyLeaves, submitLeave, cancelMyLeave,
+  listLeaveTypes, listMyLeaves, submitLeave, cancelMyLeave, getMyLeaveBalance,
 } = require('../controllers/leaveController');
 
 const submitSchema = {
@@ -16,7 +16,8 @@ const submitSchema = {
   reason:      { type: 'string', required: true, min: 10, max: 1000 },
 };
 
-router.get('/types',  verifyToken, listLeaveTypes);
+router.get('/types',   verifyToken, listLeaveTypes);
+router.get('/balance', verifyToken, getMyLeaveBalance);
 router.get('/',       verifyToken, listMyLeaves);
 router.post('/',      verifyToken, validate({ body: submitSchema }), submitLeave);
 router.delete('/:id', verifyToken, validate({ params: { id: { type: 'uuid', required: true } } }), cancelMyLeave);

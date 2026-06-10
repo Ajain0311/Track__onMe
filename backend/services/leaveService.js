@@ -31,6 +31,7 @@ const mapLeaveType = (r) => ({
   description: r.description ?? null,
   color:       r.color,
   maxDays:     r.max_days ?? null,
+  annualDays:  r.annual_days ?? 0,
   isPaid:      r.is_paid,
   isActive:    r.is_active,
 });
@@ -226,8 +227,64 @@ const rejectLeave = async (id, adminId, adminNote = null) => {
   return mapLeave(data);
 };
 
+// ── Leave Balance ──────────────────────────────────────────────────────────
+
+const getLeaveBalance = async (userId, year) => {
+  const [typesRes, leavesRes, allowancesRes] = await Promise.all([
+    supabase.from('leave_types').select('*').eq('is_active', true).order('name'),
+    supabase.from('leaves')
+      .select('leave_type_id, status, days')
+      .eq('user_id', userId)
+      .in('status', ['approved', 'pending'])
+      .gte('start_date', `${year}-01-01`)
+      .lte('end_date',   `${year}-12-31`),
+    supabase.from('leave_allowances')
+      .select('leave_type_id, total_days')
+      .eq('user_id', userId)
+      .eq('year', year),
+  ]);
+
+  if (typesRes.error) throw new Error(typesRes.error.message);
+
+  const leaves     = leavesRes.data  || [];
+  const allowances = allowancesRes.data || [];
+  const allowMap   = Object.fromEntries(allowances.map((a) => [a.leave_type_id, a.total_days]));
+
+  return typesRes.data.map((t) => {
+    const typeLeaves = leaves.filter((l) => l.leave_type_id === t.id);
+    const usedDays    = typeLeaves.filter((l) => l.status === 'approved').reduce((s, l) => s + (l.days || 0), 0);
+    const pendingDays = typeLeaves.filter((l) => l.status === 'pending').reduce((s, l) => s + (l.days || 0), 0);
+    // Per-user override takes precedence over org default
+    const totalDays   = allowMap[t.id] ?? t.annual_days ?? 0;
+    const remaining   = Math.max(0, totalDays - usedDays - pendingDays);
+    return {
+      ...mapLeaveType(t),
+      totalDays,
+      usedDays,
+      pendingDays,
+      remaining,
+    };
+  });
+};
+
+// ── Admin: set per-user allowance ──────────────────────────────────────────
+
+const setLeaveAllowance = async (userId, leaveTypeId, year, totalDays) => {
+  const { data, error } = await supabase
+    .from('leave_allowances')
+    .upsert(
+      { user_id: userId, leave_type_id: leaveTypeId, year, total_days: totalDays },
+      { onConflict: 'user_id,leave_type_id,year' }
+    )
+    .select('*')
+    .single();
+  if (error) throw new Error(error.message);
+  return data;
+};
+
 module.exports = {
   getLeaveTypes,
   getUserLeaves, createLeave, cancelLeave,
   getAllLeaves, getPendingCount, approveLeave, rejectLeave,
+  getLeaveBalance, setLeaveAllowance,
 };

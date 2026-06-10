@@ -355,6 +355,13 @@ export default function SettingsScreen({ navigation }) {
           <Text style={[st.sectionTitle, { color: g.textMuted }]}>LEAVES</Text>
           <LinearGradient colors={grad.card} style={[st.sectionCard, { borderColor: g.border }]}>
             <SettingRow
+              icon="📊"
+              title="Leave Balance"
+              subtitle="See how many days you have left this year"
+              onPress={() => navigation.navigate('LeaveBalance')}
+            />
+            <View style={[st.divider, { backgroundColor: g.border }]} />
+            <SettingRow
               icon="🌴"
               title="My Leave Requests"
               subtitle="View, submit, and manage leave requests"

@@ -8,7 +8,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { getStatus, getNotifications, getApiErrorMessage } from '../services/api';
+import { getStatus, getNotifications, getMe, getApiErrorMessage } from '../services/api';
 import { logOut } from '../services/authService';
 import useAuthStore from '../store/authStore';
 import useTimeStore from '../store/timeStore';
@@ -77,6 +77,7 @@ export default function DashboardScreen({ navigation }) {
   const [faceRegisteredOnServer, setFaceRegisteredOnServer] = useState(false);
   const [clockTime, setClockTime] = useState(new Date());
   const [unreadCount, setUnreadCount] = useState(0);
+  const [displayName, setDisplayName] = useState(null);
 
   const timerRef = useRef(null);
   const clockRef = useRef(null);
@@ -155,6 +156,11 @@ export default function DashboardScreen({ navigation }) {
       // Silently refresh status so the timer & button states stay accurate
       // without resetting the loading skeleton every time.
       fetchStatus({ silent: true });
+
+      // Load display name from profile (best-effort, cached after first load)
+      getMe()
+        .then((r) => { if (r.data?.profile?.displayName) setDisplayName(r.data.profile.displayName); })
+        .catch(() => {});
 
       // Best-effort unread notification count, also re-polled every 60s
       // while this screen is focused so the bell badge stays current.
@@ -321,7 +327,7 @@ export default function DashboardScreen({ navigation }) {
           <View style={{ flex: 1 }}>
             <Text style={{ color: g.textMuted, fontSize: 13, fontWeight: '600' }}>{getGreeting()}</Text>
             <Text style={{ color: g.text, fontSize: 15, fontWeight: '800', marginTop: 3, maxWidth: 200 }} numberOfLines={1}>
-              {user?.email?.split('@')[0] || user?.email}
+              {displayName || user?.email?.split('@')[0] || user?.email}
             </Text>
           </View>
           <View style={{ alignItems: 'flex-end', gap: 4 }}>
@@ -348,7 +354,7 @@ export default function DashboardScreen({ navigation }) {
                 onPress={handleLogout}
                 style={[s.avatarCircle, { backgroundColor: g.accentSoft, borderColor: g.borderGlow }]}
               >
-                <Text style={{ color: g.accent, fontSize: 16, fontWeight: '900' }}>{getInitials(user?.email)}</Text>
+                <Text style={{ color: g.accent, fontSize: 16, fontWeight: '900' }}>{(displayName || user?.email || '?').charAt(0).toUpperCase()}</Text>
               </TouchableOpacity>
             </View>
             <Text style={{ color: g.text, fontSize: 20, fontWeight: '900', fontVariant: ['tabular-nums'] }}>

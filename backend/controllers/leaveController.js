@@ -6,6 +6,7 @@ const {
   getLeaveTypes,
   getUserLeaves, createLeave, cancelLeave,
   getAllLeaves,  getPendingCount, approveLeave, rejectLeave,
+  getLeaveBalance, setLeaveAllowance,
 } = require('../services/leaveService');
 const audit    = require('../services/auditService');
 const activity = require('../services/activityService');
@@ -55,6 +56,12 @@ const cancelMyLeave = asyncHandler(async (req, res) => {
     if (/not found|pending/i.test(err.message)) throw AppError.badRequest(err.message);
     throw err;
   }
+});
+
+const getMyLeaveBalance = asyncHandler(async (req, res) => {
+  const year = parseInt(req.query.year) || new Date().getFullYear();
+  const balance = await getLeaveBalance(req.user.id, year);
+  res.json({ balance, year });
 });
 
 // ─── Admin-facing ─────────────────────────────────────────────────────────────
@@ -108,7 +115,28 @@ const reject = asyncHandler(async (req, res) => {
   }
 });
 
+const adminSetAllowance = asyncHandler(async (req, res) => {
+  const { userId, leaveTypeId, year, totalDays } = req.body;
+  if (!userId || !leaveTypeId || !year || totalDays === undefined) {
+    throw AppError.badRequest('userId, leaveTypeId, year, and totalDays are required.');
+  }
+  const record = await setLeaveAllowance(userId, leaveTypeId, parseInt(year), parseInt(totalDays));
+  await audit.record({
+    actor: req.user, action: 'leave.set_allowance', resource: 'leave_allowances',
+    resourceId: record.id, metadata: { userId, leaveTypeId, year, totalDays }, req,
+  });
+  res.json({ record });
+});
+
+const adminGetUserBalance = asyncHandler(async (req, res) => {
+  const year = parseInt(req.query.year) || new Date().getFullYear();
+  const balance = await getLeaveBalance(req.params.userId, year);
+  res.json({ balance, year });
+});
+
 module.exports = {
   listLeaveTypes, listMyLeaves, submitLeave, cancelMyLeave,
+  getMyLeaveBalance,
   listAllAdminLeaves, approve, reject,
+  adminSetAllowance, adminGetUserBalance,
 };
