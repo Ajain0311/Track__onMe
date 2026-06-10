@@ -37,6 +37,7 @@ import AdminReportsScreen from './screens/admin/AdminReportsScreen';
 import EditProfileScreen from './screens/EditProfileScreen';
 import LeaveBalanceScreen from './screens/LeaveBalanceScreen';
 import EmployeeDirectoryScreen from './screens/EmployeeDirectoryScreen';
+import AttendanceCalendarScreen from './screens/AttendanceCalendarScreen';
 import LocationRequestScreen from './screens/LocationRequestScreen';
 import MyLocationRequestsScreen from './screens/MyLocationRequestsScreen';
 import LeaveRequestScreen from './screens/LeaveRequestScreen';
@@ -315,6 +316,7 @@ export default function App() {
                 <Stack.Screen name="AdminReports" component={AdminReportsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="LeaveBalance" component={LeaveBalanceScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="EmployeeDirectory" component={EmployeeDirectoryScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AttendanceCalendar" component={AttendanceCalendarScreen} options={{ animation: 'slide_from_right' }} />
               </>
             ) : (
               <Stack.Screen name="Login" component={LoginScreen} />

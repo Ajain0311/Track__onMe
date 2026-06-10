@@ -384,10 +384,17 @@ export default function SettingsScreen({ navigation }) {
           </LinearGradient>
         </View>
 
-        {/* Attendance Corrections */}
+        {/* Attendance */}
         <View style={st.section}>
-          <Text style={[st.sectionTitle, { color: g.textMuted }]}>CORRECTIONS</Text>
+          <Text style={[st.sectionTitle, { color: g.textMuted }]}>ATTENDANCE</Text>
           <LinearGradient colors={grad.card} style={[st.sectionCard, { borderColor: g.border }]}>
+            <SettingRow
+              icon="📅"
+              title="Attendance Calendar"
+              subtitle="Monthly view of present/absent/leave days"
+              onPress={() => navigation.navigate('AttendanceCalendar')}
+            />
+            <View style={[st.divider, { backgroundColor: g.border }]} />
             <SettingRow
               icon="✏️"
               title="My Correction Requests"

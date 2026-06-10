@@ -150,6 +150,13 @@ export default function HistoryScreen({ navigation }) {
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <TouchableOpacity
+              style={[ss.searchToggle, { backgroundColor: g.glass, borderColor: g.border }]}
+              onPress={() => navigation.navigate('AttendanceCalendar')}
+              accessibilityLabel="Calendar view"
+            >
+              <Text style={{ fontSize: 16 }}>📅</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
               style={[ss.searchToggle, { backgroundColor: g.glass, borderColor: g.border, opacity: days.length === 0 ? 0.5 : 1 }]}
               onPress={handleExport}
               disabled={exporting || days.length === 0}
