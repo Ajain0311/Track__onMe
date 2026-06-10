@@ -30,8 +30,11 @@ import AdminLocationFormScreen from './screens/admin/AdminLocationFormScreen';
 import AdminLocationRequestsScreen from './screens/admin/AdminLocationRequestsScreen';
 import AdminAuditLogsScreen from './screens/admin/AdminAuditLogsScreen';
 import AdminLiveAttendanceScreen from './screens/admin/AdminLiveAttendanceScreen';
+import AdminLeavesScreen from './screens/admin/AdminLeavesScreen';
 import LocationRequestScreen from './screens/LocationRequestScreen';
 import MyLocationRequestsScreen from './screens/MyLocationRequestsScreen';
+import LeaveRequestScreen from './screens/LeaveRequestScreen';
+import MyLeavesScreen from './screens/MyLeavesScreen';
 import NotificationsScreen from './screens/NotificationsScreen';
 import ActivityScreen from './screens/ActivityScreen';
 import ChangePasswordScreen from './screens/ChangePasswordScreen';
@@ -288,6 +291,9 @@ export default function App() {
                 <Stack.Screen name="AdminLocationRequests" component={AdminLocationRequestsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminAuditLogs" component={AdminAuditLogsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminLiveAttendance" component={AdminLiveAttendanceScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AdminLeaves" component={AdminLeavesScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="MyLeaves" component={MyLeavesScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="LeaveRequest" component={LeaveRequestScreen} options={{ animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="LocationRequest" component={LocationRequestScreen} options={{ animation: 'slide_from_bottom' }} />
                 <Stack.Screen name="MyLocationRequests" component={MyLocationRequestsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="Notifications" component={NotificationsScreen} options={{ animation: 'slide_from_right' }} />

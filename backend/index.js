@@ -21,6 +21,7 @@ const locationRequestRoutes = require('./routes/locationRequests');
 const notificationRoutes    = require('./routes/notifications');
 const activityRoutes        = require('./routes/activity');
 const faceRoutes            = require('./routes/face');
+const leaveRoutes           = require('./routes/leaves');
 
 const app  = express();
 const PORT = process.env.PORT || 5000;
@@ -58,6 +59,7 @@ app.use('/api/locations',          locationRoutes);
 app.use('/api/location-requests',  locationRequestRoutes);
 app.use('/api/notifications',      notificationRoutes);
 app.use('/api/activity',           activityRoutes);
+app.use('/api/leaves',             leaveRoutes);
 app.use('/api/admin',              adminRoutes);             // protected internally
 
 // ─── 404 + error handler (must be last) ───────────────────────────────────────

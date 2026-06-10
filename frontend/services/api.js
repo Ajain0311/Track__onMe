@@ -150,3 +150,18 @@ export const adminApproveLocationRequest = (id, adminNote) =>
   api.patch(`/admin/location-requests/${id}/approve`, { adminNote });
 export const adminRejectLocationRequest  = (id, adminNote) =>
   api.patch(`/admin/location-requests/${id}/reject`, { adminNote });
+
+// ─── Leaves (user) ────────────────────────────────────────────────────────────
+
+export const getLeaveTypes   = () => api.get('/leaves/types');
+export const getMyLeaves     = (params = {}) => api.get('/leaves', { params });
+export const submitLeave     = (payload) => api.post('/leaves', payload);
+export const cancelLeave     = (id) => api.delete(`/leaves/${id}`);
+
+// ─── Leaves (admin) ───────────────────────────────────────────────────────────
+
+export const adminGetLeaves     = (params = {}) => api.get('/admin/leaves', { params });
+export const adminApproveLeave  = (id, adminNote) =>
+  api.patch(`/admin/leaves/${id}/approve`, { adminNote });
+export const adminRejectLeave   = (id, adminNote) =>
+  api.patch(`/admin/leaves/${id}/reject`, { adminNote });

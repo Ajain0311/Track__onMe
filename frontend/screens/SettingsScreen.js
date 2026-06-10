@@ -337,6 +337,26 @@ export default function SettingsScreen({ navigation }) {
           </LinearGradient>
         </View>
 
+        {/* Leaves */}
+        <View style={st.section}>
+          <Text style={[st.sectionTitle, { color: g.textMuted }]}>LEAVES</Text>
+          <LinearGradient colors={grad.card} style={[st.sectionCard, { borderColor: g.border }]}>
+            <SettingRow
+              icon="🌴"
+              title="My Leave Requests"
+              subtitle="View, submit, and manage leave requests"
+              onPress={() => navigation.navigate('MyLeaves')}
+            />
+            <View style={[st.divider, { backgroundColor: g.border }]} />
+            <SettingRow
+              icon="➕"
+              title="Request Leave"
+              subtitle="Submit a new annual, sick or personal leave"
+              onPress={() => navigation.navigate('LeaveRequest')}
+            />
+          </LinearGradient>
+        </View>
+
         {/* Location Requests */}
         <View style={st.section}>
           <Text style={[st.sectionTitle, { color: g.textMuted }]}>LOCATIONS</Text>

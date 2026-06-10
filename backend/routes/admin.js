@@ -14,6 +14,11 @@ const {
 const {
   listAllRequests, approve, reject,
 } = require('../controllers/locationRequestController');
+const {
+  listAllAdminLeaves,
+  approve: approveLeave,
+  reject:  rejectLeave,
+} = require('../controllers/leaveController');
 
 // All admin routes require authentication + admin (or manager / super_admin) role
 router.use(verifyToken, requireRole(['admin', 'manager']));
@@ -63,6 +68,17 @@ router.patch('/location-requests/:id/approve',
 router.patch('/location-requests/:id/reject',
   validate({ params: { id: { type: 'uuid', required: true } } }),
   reject,
+);
+
+// ─── Leaves ───────────────────────────────────────────────────────────────────
+router.get('/leaves', listAllAdminLeaves);
+router.patch('/leaves/:id/approve',
+  validate({ params: { id: { type: 'uuid', required: true } } }),
+  approveLeave,
+);
+router.patch('/leaves/:id/reject',
+  validate({ params: { id: { type: 'uuid', required: true } } }),
+  rejectLeave,
 );
 
 // ─── Audit Logs ───────────────────────────────────────────────────────────────

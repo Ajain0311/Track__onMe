@@ -8,7 +8,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import useThemeStore from '../../store/themeStore';
 import useAuthStore from '../../store/authStore';
-import { adminGetStats, adminGetLocationRequests, getApiErrorMessage } from '../../services/api';
+import { adminGetStats, adminGetLocationRequests, adminGetLeaves, getApiErrorMessage } from '../../services/api';
 
 const StatCard = ({ label, value, color, icon, g, grad, anim }) => (
   <Animated.View style={[
@@ -30,19 +30,24 @@ export default function AdminDashboardScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [pendingRequests, setPendingRequests] = useState(0);
+  const [pendingLeaves, setPendingLeaves]   = useState(0);
   const anims = useRef([0, 1, 2, 3].map(() => new Animated.Value(0))).current;
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [statsRes, reqRes] = await Promise.allSettled([
+      const [statsRes, reqRes, leavesRes] = await Promise.allSettled([
         adminGetStats(),
         adminGetLocationRequests('pending'),
+        adminGetLeaves({ status: 'pending' }),
       ]);
       if (statsRes.status === 'fulfilled') setStats(statsRes.value.data);
       else setError(getApiErrorMessage(statsRes.reason));
       if (reqRes.status === 'fulfilled') {
         setPendingRequests(reqRes.value.data.pendingCount || reqRes.value.data.requests?.length || 0);
+      }
+      if (leavesRes.status === 'fulfilled') {
+        setPendingLeaves(leavesRes.value.data.pendingCount || leavesRes.value.data.leaves?.length || 0);
       }
     } finally {
       setLoading(false);
@@ -173,6 +178,30 @@ export default function AdminDashboardScreen({ navigation }) {
                 {(stats?.activeNow || 0) > 0 && (
                   <View style={[st.pendingBadge, { backgroundColor: g.mint || '#3ee8c7' }]}>
                     <Text style={{ color: '#000', fontSize: 12, fontWeight: '900' }}>{stats.activeNow}</Text>
+                  </View>
+                )}
+                <Text style={{ color: g.textDim, fontSize: 20 }}>›</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Leave Requests action */}
+            <TouchableOpacity
+              style={[st.requestsCard, {
+                backgroundColor: pendingLeaves > 0 ? 'rgba(139,124,255,0.08)' : g.glass,
+                borderColor: pendingLeaves > 0 ? 'rgba(139,124,255,0.45)' : g.border,
+              }]}
+              onPress={() => navigation.navigate('AdminLeaves')}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text style={{ fontSize: 28 }}>🌴</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[st.actionLabel, { color: g.text }]}>Leave Requests</Text>
+                  <Text style={[st.actionSub, { color: g.textMuted }]}>Approve or reject employee leaves</Text>
+                </View>
+                {pendingLeaves > 0 && (
+                  <View style={[st.pendingBadge, { backgroundColor: g.accent }]}>
+                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: '900' }}>{pendingLeaves}</Text>
                   </View>
                 )}
                 <Text style={{ color: g.textDim, fontSize: 20 }}>›</Text>
