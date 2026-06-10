@@ -1,0 +1,17 @@
+// controllers/analyticsController.js
+
+const asyncHandler = require('../middleware/asyncHandler');
+const { getPersonalAnalytics, getOrgAnalytics } = require('../services/analyticsService');
+
+const getMyAnalytics = asyncHandler(async (req, res) => {
+  const data = await getPersonalAnalytics(req.user.id);
+  res.json(data);
+});
+
+const getAdminAnalytics = asyncHandler(async (req, res) => {
+  const days = parseInt(req.query.days, 10) || 30;
+  const data = await getOrgAnalytics(Math.min(Math.max(days, 7), 90));
+  res.json(data);
+});
+
+module.exports = { getMyAnalytics, getAdminAnalytics };

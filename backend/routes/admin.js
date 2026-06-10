@@ -31,6 +31,7 @@ const {
   adminCreateDepartment, adminUpdateDepartment, adminDeleteDepartment,
   adminListProfiles, adminSetUserDepartment,
 } = require('../controllers/departmentController');
+const { getAdminAnalytics } = require('../controllers/analyticsController');
 
 // All admin routes require authentication + admin (or manager / super_admin) role
 router.use(verifyToken, requireRole(['admin', 'manager']));
@@ -136,5 +137,8 @@ router.patch('/users/:userId/department',
 
 // ─── Audit Logs ───────────────────────────────────────────────────────────────
 router.get('/audit-logs', listAuditLogs);
+
+// ─── Analytics ────────────────────────────────────────────────────────────────
+router.get('/analytics', getAdminAnalytics);
 
 module.exports = router;

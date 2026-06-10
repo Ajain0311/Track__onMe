@@ -210,3 +210,8 @@ export const adminRejectLeave      = (id, adminNote) =>
 export const adminSetLeaveAllowance = (payload) => api.post('/admin/leaves/allowances', payload);
 export const adminGetUserLeaveBalance = (userId, year) =>
   api.get(`/admin/users/${userId}/leave-balance`, { params: { year } });
+
+// ─── Analytics ───────────────────────────────────────────────────────────────
+
+export const getPersonalAnalytics = () => api.get('/analytics/summary');
+export const adminGetAnalytics = (days = 30) => api.get('/admin/analytics', { params: { days } });
