@@ -28,6 +28,9 @@ const GETS = [
   '/admin/settings', '/admin/holidays', '/admin/designations',
   '/admin/shifts', '/admin/shifts/assignments',
   '/admin/reports/attendance', '/admin/reports/leaves',
+  // salaries / payroll
+  '/salary/me', '/admin/salaries', '/admin/salary-payouts',
+  '/admin/salary-settings',
 ];
 
 (async () => {
