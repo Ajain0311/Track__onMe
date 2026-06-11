@@ -12,7 +12,9 @@ import useThemeStore from '../store/themeStore';
 
 // ── Android APK download URL ──────────────────────────────────────────────────
 // Update this after each EAS build (grab the URL from the EAS dashboard).
-const APK_DOWNLOAD_URL = 'https://expo.dev/artifacts/eas/bwtWzWYwja1GJcuS94QPbK.apk';
+// Permanent URL — always redirects to the newest GitHub release asset, so new
+// APK releases don't require a code change here.
+const APK_DOWNLOAD_URL = 'https://github.com/Ajain0311/Track__onMe/releases/latest/download/AttendTrack.apk';
 
 const toAuthEmail = (input) => {
   const t = input.trim().toLowerCase();

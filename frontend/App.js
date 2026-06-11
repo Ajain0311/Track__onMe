@@ -7,6 +7,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import './utils/webAlertShim'; // makes Alert.alert work in the browser
 import { supabase } from './services/supabaseConfig';
 import useAuthStore from './store/authStore';
 import useThemeStore from './store/themeStore';
