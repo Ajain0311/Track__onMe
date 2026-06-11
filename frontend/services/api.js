@@ -18,6 +18,11 @@ function resolveBaseUrl() {
 
 export const BASE_URL = resolveBaseUrl();
 
+// Wake the Render free-tier server as early as possible (cold start can be
+// 30-50 s). Fire-and-forget at module load — by the time the user reaches the
+// dashboard the server is already warming up.
+try { fetch(`${BASE_URL.replace(/\/api$/, '')}/health`).catch(() => {}); } catch { /* fetch unavailable */ }
+
 const api = axios.create({ baseURL: BASE_URL, timeout: 30000 });
 
 api.interceptors.request.use(
@@ -32,6 +37,26 @@ api.interceptors.request.use(
   },
   (error) => Promise.reject(error)
 );
+
+// Retry idempotent GETs that fail from Render free-tier cold starts
+// (timeout / network error / 502-504). Waits 3 s → 8 s between attempts so a
+// sleeping server has time to wake instead of erroring every page load.
+const COLD_START_DELAYS = [3000, 8000];
+api.interceptors.response.use(undefined, async (error) => {
+  const config = error?.config;
+  const status = error?.response?.status;
+  const transient =
+    error?.code === 'ECONNABORTED' ||      // axios timeout
+    (!error?.response && error?.message === 'Network Error') ||
+    [502, 503, 504].includes(status);
+  if (!config || config.method !== 'get' || !transient) throw error;
+
+  const attempt = config.__retryCount || 0;
+  if (attempt >= COLD_START_DELAYS.length) throw error;
+  config.__retryCount = attempt + 1;
+  await new Promise((r) => setTimeout(r, COLD_START_DELAYS[attempt]));
+  return api(config);
+});
 
 export function getApiErrorMessage(error) {
   const msg = error?.message || '';

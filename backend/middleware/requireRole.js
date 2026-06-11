@@ -9,11 +9,25 @@
 const { supabase } = require('../services/supabase');
 const AppError = require('../utils/AppError');
 const logger = require('../utils/logger');
+const TTLCache = require('../utils/ttlCache');
 
 const isMissingRelation = (err) =>
   /relation .* does not exist|could not find the table|could not find a relationship/i.test(err?.message || '');
 
+// Role lookups hit the DB on every admin request — cache 60 s per user.
+// invalidateRoleCache must be called whenever a user's role changes.
+const roleCache = new TTLCache(60_000, 2000);
+const invalidateRoleCache = (userId) => roleCache.delete(userId);
+
 const getRoleAndPermissions = async (userId) => {
+  const cached = roleCache.get(userId);
+  if (cached) return cached;
+  const result = await fetchRoleAndPermissions(userId);
+  roleCache.set(userId, result);
+  return result;
+};
+
+const fetchRoleAndPermissions = async (userId) => {
   // Prefer the FK-based lookup with roles join (post-migration-003)
   let data, error;
   ({ data, error } = await supabase
@@ -94,4 +108,4 @@ const requirePermission = (permissionSlug) => async (req, _res, next) => {
 // Back-compat shim for existing routes
 const requireAdmin = requireRole(['admin', 'manager']);
 
-module.exports = { requireRole, requirePermission, requireAdmin, getRoleAndPermissions };
+module.exports = { requireRole, requirePermission, requireAdmin, getRoleAndPermissions, invalidateRoleCache };

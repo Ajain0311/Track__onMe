@@ -1,0 +1,17 @@
+# Pings the Render free-tier backend every 10 minutes so it never spins down
+# (Render free instances sleep after 15 min idle; cold starts take 30-50 s).
+# GitHub cron is best-effort — occasional delays are fine, this just needs to
+# beat the 15-minute idle window most of the time.
+name: Keep backend alive
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        run: curl -sS --max-time 60 --retry 2 https://track-onme.onrender.com/health

@@ -8,6 +8,10 @@ services:
   - type: web
     name: track-onme
     runtime: node
+    # NOTE: this service currently runs in Oregon (US) while Supabase is in
+    # ap-south-1 (Mumbai) — every DB round-trip pays ~250 ms. Render regions
+    # are immutable after creation; recreating this service with
+    # `region: singapore` would cut API latency roughly 4x.
     rootDir: backend
     buildCommand: npm install
     startCommand: node index.js

@@ -5,6 +5,7 @@ const AppError = require('../utils/AppError');
 const {
   getAllUsers, getUserAttendanceAdmin, getDashboardStats, setUserRole, getActiveSessions,
 } = require('../services/adminService');
+const { invalidateRoleCache } = require('../middleware/requireRole');
 const audit = require('../services/auditService');
 
 // GET /api/admin/stats
@@ -40,6 +41,7 @@ const updateUserRole = asyncHandler(async (req, res) => {
   }
 
   await setUserRole(targetId, role);
+  invalidateRoleCache(targetId);
   await audit.record({
     actor: req.user, action: 'user.role.update', resource: 'users',
     resourceId: targetId, metadata: { newRole: role }, req,
