@@ -9,7 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import useThemeStore from '../store/themeStore';
 import useGoalStore from '../store/goalStore';
-import { getPersonalAnalytics, getAttendanceDaily, getApiErrorMessage } from '../services/api';
+import { getPersonalAnalytics, getPersonalPunctuality, getAttendanceDaily, getApiErrorMessage } from '../services/api';
 import { useTimeStore } from '../store/timeStore';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -101,21 +101,24 @@ export default function AnalyticsScreen({ navigation }) {
   const { goals, computeStreak } = useGoalStore();
   const { totalTimeSeconds, dailyTotals, getWeekTotal, getMonthTotal, sessions } = useTimeStore();
 
-  const [serverData, setServerData] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
+  const [serverData, setServerData]       = useState(null);
+  const [punctuality, setPunctuality]     = useState(null);
+  const [loading, setLoading]             = useState(true);
+  const [refreshing, setRefreshing]       = useState(false);
+  const [error, setError]                 = useState(null);
 
   const statAnims = useRef([0, 1, 2, 3, 4, 5].map(() => new Animated.Value(0))).current;
 
   const loadData = useCallback(async () => {
     setError(null);
     try {
-      const [analyticsRes] = await Promise.all([
+      const [analyticsRes, punctualityRes] = await Promise.all([
         getPersonalAnalytics(),
+        getPersonalPunctuality().catch(() => null),
         getAttendanceDaily().catch(() => null),
       ]);
       setServerData(analyticsRes.data);
+      if (punctualityRes) setPunctuality(punctualityRes.data);
     } catch (err) {
       setError(getApiErrorMessage(err));
     } finally {
@@ -234,6 +237,38 @@ export default function AnalyticsScreen({ navigation }) {
               {trendDates.map((d) => (
                 <TrendBar key={d.date} day={d} maxHours={maxHours} g={g} />
               ))}
+            </View>
+          </LinearGradient>
+        )}
+
+        {/* Punctuality card */}
+        {punctuality && (
+          <LinearGradient colors={grad.card} style={[ss.rateCard, { borderColor: g.border }]}>
+            <Text style={[ss.cardTitle, { color: g.text }]}>Punctuality (Last 3 Months)</Text>
+            <View style={ss.rateRow}>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 26, fontWeight: '900', color: punctuality.punctualityRate >= 80 ? g.mint : punctuality.punctualityRate >= 60 ? g.accent : g.coral }}>
+                  {punctuality.punctualityRate != null ? `${punctuality.punctualityRate}%` : '—'}
+                </Text>
+                <Text style={[{ fontSize: 11, marginTop: 4, color: g.textMuted, fontWeight: '600' }]}>On Time</Text>
+              </View>
+              <View style={[ss.rateDivider, { backgroundColor: g.border }]} />
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 22, fontWeight: '900', color: g.coral }}>{punctuality.lateCount}</Text>
+                <Text style={[{ fontSize: 11, marginTop: 4, color: g.textMuted, fontWeight: '600' }]}>Late Days</Text>
+              </View>
+              <View style={[ss.rateDivider, { backgroundColor: g.border }]} />
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 22, fontWeight: '900', color: g.accent }}>
+                  {punctuality.avgLateMinutes > 0 ? `${punctuality.avgLateMinutes}m` : '—'}
+                </Text>
+                <Text style={[{ fontSize: 11, marginTop: 4, color: g.textMuted, fontWeight: '600' }]}>Avg Late</Text>
+              </View>
+              <View style={[ss.rateDivider, { backgroundColor: g.border }]} />
+              <View style={{ alignItems: 'center' }}>
+                <Text style={{ fontSize: 22, fontWeight: '900', color: g.textMuted }}>{punctuality.earlyCheckoutCount}</Text>
+                <Text style={[{ fontSize: 11, marginTop: 4, color: g.textMuted, fontWeight: '600' }]}>Early Out</Text>
+              </View>
             </View>
           </LinearGradient>
         )}

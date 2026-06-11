@@ -213,8 +213,10 @@ export const adminGetUserLeaveBalance = (userId, year) =>
 
 // ─── Analytics ───────────────────────────────────────────────────────────────
 
-export const getPersonalAnalytics = () => api.get('/analytics/summary');
-export const adminGetAnalytics = (days = 30) => api.get('/admin/analytics', { params: { days } });
+export const getPersonalAnalytics  = () => api.get('/analytics/summary');
+export const getPersonalPunctuality = (months = 3) => api.get('/analytics/punctuality', { params: { months } });
+export const adminGetAnalytics     = (days = 30) => api.get('/admin/analytics', { params: { days } });
+export const adminGetPunctuality   = (days = 30) => api.get('/admin/punctuality', { params: { days } });
 
 // ─── Holidays ────────────────────────────────────────────────────────────────
 

@@ -8,7 +8,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import useThemeStore from '../../store/themeStore';
-import { adminGetAnalytics, getApiErrorMessage } from '../../services/api';
+import { adminGetAnalytics, adminGetPunctuality, getApiErrorMessage } from '../../services/api';
 
 const PERIODS = [
   { label: '14d', days: 14 },
@@ -100,16 +100,22 @@ function TopPerformerRow({ person, rank, g, grad }) {
 export default function AdminAnalyticsScreen({ navigation }) {
   const { colors: g, gradients: grad } = useThemeStore();
   const [period, setPeriod] = useState(30);
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [data, setData]             = useState(null);
+  const [punctData, setPunctData]   = useState(null);
+  const [activeTab, setActiveTab]   = useState('attendance'); // 'attendance' | 'punctuality'
+  const [loading, setLoading]       = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError]           = useState(null);
 
   const loadData = useCallback(async (days = period) => {
     setError(null);
     try {
-      const res = await adminGetAnalytics(days);
-      setData(res.data);
+      const [attRes, punctRes] = await Promise.all([
+        adminGetAnalytics(days),
+        adminGetPunctuality(days).catch(() => null),
+      ]);
+      setData(attRes.data);
+      if (punctRes) setPunctData(punctRes.data);
     } catch (err) {
       setError(getApiErrorMessage(err));
     } finally {
@@ -181,8 +187,26 @@ export default function AdminAnalyticsScreen({ navigation }) {
           </View>
         )}
 
+        {/* Tab selector */}
+        <View style={ss.tabRow}>
+          {[['attendance', '📊 Attendance'], ['punctuality', '⏰ Punctuality']].map(([key, label]) => (
+            <TouchableOpacity
+              key={key}
+              onPress={() => setActiveTab(key)}
+              style={[ss.tabBtn, {
+                backgroundColor: activeTab === key ? g.accent : g.glass,
+                borderColor:     activeTab === key ? g.accent : g.border,
+              }]}
+            >
+              <Text style={{ color: activeTab === key ? '#fff' : g.textMuted, fontWeight: '700', fontSize: 13 }}>
+                {label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
         {/* Summary strip */}
-        {summary && (
+        {activeTab === 'attendance' && summary != null && (
           <View style={ss.summaryStrip}>
             <LinearGradient colors={grad.card} style={[ss.summaryChip, { borderColor: g.border }]}>
               <Text style={[ss.chipVal, { color: g.mint }]}>{summary.todayPresent}</Text>
@@ -205,45 +229,125 @@ export default function AdminAnalyticsScreen({ navigation }) {
           </View>
         )}
 
-        {/* Daily attendance trend */}
-        <LinearGradient colors={grad.card} style={[ss.card, { borderColor: g.border }]}>
-          <Text style={[ss.cardTitle, { color: g.text }]}>Daily Attendance Rate</Text>
-          <Text style={[ss.cardSub, { color: g.textDim }]}>Weekdays, last {period} days</Text>
-          <View style={{ marginTop: 14 }}>
-            <DailyRateChart dailyRates={dailyRates} g={g} />
-          </View>
-          <View style={ss.rateLegend}>
-            <View style={ss.legItem}><View style={[ss.legDot, { backgroundColor: g.mint }]} /><Text style={[ss.legText, { color: g.textDim }]}>≥80%</Text></View>
-            <View style={ss.legItem}><View style={[ss.legDot, { backgroundColor: g.accent }]} /><Text style={[ss.legText, { color: g.textDim }]}>≥50%</Text></View>
-            <View style={ss.legItem}><View style={[ss.legDot, { backgroundColor: g.coral }]} /><Text style={[ss.legText, { color: g.textDim }]}>&lt;50%</Text></View>
-          </View>
-        </LinearGradient>
+        {/* Attendance-only sections */}
+        {activeTab === 'attendance' && (
+          <>
+            <LinearGradient colors={grad.card} style={[ss.card, { borderColor: g.border }]}>
+              <Text style={[ss.cardTitle, { color: g.text }]}>Daily Attendance Rate</Text>
+              <Text style={[ss.cardSub, { color: g.textDim }]}>Weekdays, last {period} days</Text>
+              <View style={{ marginTop: 14 }}>
+                <DailyRateChart dailyRates={dailyRates} g={g} />
+              </View>
+              <View style={ss.rateLegend}>
+                <View style={ss.legItem}><View style={[ss.legDot, { backgroundColor: g.mint }]} /><Text style={[ss.legText, { color: g.textDim }]}>≥80%</Text></View>
+                <View style={ss.legItem}><View style={[ss.legDot, { backgroundColor: g.accent }]} /><Text style={[ss.legText, { color: g.textDim }]}>≥50%</Text></View>
+                <View style={ss.legItem}><View style={[ss.legDot, { backgroundColor: g.coral }]} /><Text style={[ss.legText, { color: g.textDim }]}>&lt;50%</Text></View>
+              </View>
+            </LinearGradient>
 
-        {/* Department breakdown */}
-        {deptBreakdown.length > 0 && (
-          <LinearGradient colors={grad.card} style={[ss.card, { borderColor: g.border }]}>
-            <Text style={[ss.cardTitle, { color: g.text }]}>Department Breakdown</Text>
-            <Text style={[ss.cardSub, { color: g.textDim }]}>Attendance rate this week</Text>
-            <View style={{ marginTop: 16, gap: 16 }}>
-              {deptBreakdown.map((d) => <DeptBar key={d.id} dept={d} g={g} />)}
-            </View>
-          </LinearGradient>
+            {deptBreakdown.length > 0 && (
+              <LinearGradient colors={grad.card} style={[ss.card, { borderColor: g.border }]}>
+                <Text style={[ss.cardTitle, { color: g.text }]}>Department Breakdown</Text>
+                <Text style={[ss.cardSub, { color: g.textDim }]}>Attendance rate this week</Text>
+                <View style={{ marginTop: 16, gap: 16 }}>
+                  {deptBreakdown.map((d) => <DeptBar key={d.id} dept={d} g={g} />)}
+                </View>
+              </LinearGradient>
+            )}
+
+            {topPerformers.length > 0 && (
+              <View>
+                <Text style={[ss.sectionTitle, { color: g.text }]}>Top Performers</Text>
+                <Text style={[ss.sectionSub, { color: g.textDim }]}>Most present in last {period} days</Text>
+                <View style={ss.perfList}>
+                  {topPerformers.map((p, i) => (
+                    <TopPerformerRow key={p.userId} person={p} rank={i} g={g} grad={grad} />
+                  ))}
+                </View>
+              </View>
+            )}
+          </>
         )}
 
-        {/* Top performers */}
-        {topPerformers.length > 0 && (
-          <View>
-            <Text style={[ss.sectionTitle, { color: g.text }]}>Top Performers</Text>
-            <Text style={[ss.sectionSub, { color: g.textDim }]}>Most present in last {period} days</Text>
-            <View style={ss.perfList}>
-              {topPerformers.map((p, i) => (
-                <TopPerformerRow key={p.userId} person={p} rank={i} g={g} grad={grad} />
-              ))}
+        {/* Punctuality tab content */}
+        {activeTab === 'punctuality' && punctData && (
+          <>
+            {/* Org punctuality summary */}
+            <View style={ss.summaryStrip}>
+              <LinearGradient colors={grad.card} style={[ss.summaryChip, { borderColor: g.border }]}>
+                <Text style={[ss.chipVal, { color: g.mint }]}>
+                  {punctData.summary?.orgLateRate != null ? `${100 - punctData.summary.orgLateRate}%` : '—'}
+                </Text>
+                <Text style={[ss.chipLbl, { color: g.textDim }]}>On Time</Text>
+              </LinearGradient>
+              <LinearGradient colors={grad.card} style={[ss.summaryChip, { borderColor: g.border }]}>
+                <Text style={[ss.chipVal, { color: g.coral }]}>{punctData.summary?.orgLateRate ?? '—'}%</Text>
+                <Text style={[ss.chipLbl, { color: g.textDim }]}>Late Rate</Text>
+              </LinearGradient>
+              <LinearGradient colors={grad.card} style={[ss.summaryChip, { borderColor: g.border }]}>
+                <Text style={[ss.chipVal, { color: g.accent }]}>{punctData.summary?.totalLate ?? 0}</Text>
+                <Text style={[ss.chipLbl, { color: g.textDim }]}>Late Sessions</Text>
+              </LinearGradient>
             </View>
+            <Text style={[{ fontSize: 11, color: g.textDim, marginBottom: 8 }]}>
+              Late defined as check-in after {punctData.summary?.lateThreshold}
+            </Text>
+
+            {/* Daily late rate chart */}
+            {(punctData.dailyPunctuality || []).length > 0 && (
+              <LinearGradient colors={grad.card} style={[ss.card, { borderColor: g.border }]}>
+                <Text style={[ss.cardTitle, { color: g.text }]}>Daily Late Arrival Rate</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: 80, marginTop: 12, gap: 3 }}>
+                  {punctData.dailyPunctuality.slice(-21).map((d) => {
+                    const h = Math.max((d.lateRate / 100) * 70, d.late > 0 ? 3 : 0);
+                    return (
+                      <View key={d.date} style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end' }}>
+                        <View style={{ width: '100%', height: Math.max(h, 2), borderRadius: 3, backgroundColor: d.lateRate > 30 ? g.coral : d.lateRate > 10 ? g.accent : g.mint }} />
+                        <Text style={{ color: g.textDim, fontSize: 7, marginTop: 2 }}>
+                          {new Date(d.date + 'T00:00:00').getDate()}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </LinearGradient>
+            )}
+
+            {/* Most late */}
+            {(punctData.mostLate || []).length > 0 && (
+              <View>
+                <Text style={[ss.sectionTitle, { color: g.text }]}>Most Late Arrivals</Text>
+                <View style={ss.perfList}>
+                  {punctData.mostLate.map((p, i) => (
+                    <LinearGradient key={p.userId} colors={grad.card} style={[ss.perfCard, { borderColor: g.border }]}>
+                      <View style={ss.perfLeft}>
+                        <Text style={{ fontSize: 18 }}>#{i + 1}</Text>
+                      </View>
+                      <View style={{ flex: 1, marginLeft: 12 }}>
+                        <Text style={[ss.perfEmail, { color: g.text }]} numberOfLines={1}>{p.email.split('@')[0]}</Text>
+                        <Text style={[ss.perfSub, { color: g.textDim }]}>
+                          {p.late} late of {p.total} sessions
+                        </Text>
+                      </View>
+                      <View style={[ss.perfBadge, { backgroundColor: 'rgba(255,99,71,0.15)' }]}>
+                        <Text style={[ss.perfRate, { color: g.coral }]}>{p.lateRate}%</Text>
+                      </View>
+                    </LinearGradient>
+                  ))}
+                </View>
+              </View>
+            )}
+          </>
+        )}
+
+        {activeTab === 'punctuality' && !punctData && !error && (
+          <View style={ss.emptyBox}>
+            <Text style={{ fontSize: 40, marginBottom: 12 }}>⏰</Text>
+            <Text style={[{ fontSize: 16, fontWeight: '700', color: g.textMuted }]}>No punctuality data</Text>
           </View>
         )}
 
-        {!data && !error && (
+        {!data && !error && activeTab === 'attendance' && (
           <View style={ss.emptyBox}>
             <Text style={{ fontSize: 40, marginBottom: 12 }}>📊</Text>
             <Text style={[{ fontSize: 16, fontWeight: '700', color: g.textMuted }]}>No data yet</Text>
@@ -312,4 +416,7 @@ const ss = StyleSheet.create({
   perfRate:     { fontSize: 14, fontWeight: '900' },
 
   emptyBox: { alignItems: 'center', paddingVertical: 40 },
+
+  tabRow:  { flexDirection: 'row', gap: 8 },
+  tabBtn:  { flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
 });

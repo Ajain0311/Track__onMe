@@ -31,7 +31,8 @@ const {
   adminCreateDepartment, adminUpdateDepartment, adminDeleteDepartment,
   adminListProfiles, adminSetUserDepartment,
 } = require('../controllers/departmentController');
-const { getAdminAnalytics } = require('../controllers/analyticsController');
+const { getAdminAnalytics }    = require('../controllers/analyticsController');
+const { getAdminPunctuality }  = require('../controllers/punctualityController');
 const {
   adminListHolidays, adminCreateHoliday,
   adminUpdateHoliday, adminDeleteHoliday,
@@ -143,7 +144,8 @@ router.patch('/users/:userId/department',
 router.get('/audit-logs', listAuditLogs);
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
-router.get('/analytics', getAdminAnalytics);
+router.get('/analytics',    getAdminAnalytics);
+router.get('/punctuality',  getAdminPunctuality);
 
 // ─── Holidays ─────────────────────────────────────────────────────────────────
 router.get('/holidays',      adminListHolidays);
