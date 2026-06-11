@@ -24,7 +24,6 @@ import {
   Dimensions, Platform, Linking, TextInput,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as FaceDetector from 'expo-face-detector';
 import { LinearGradient } from 'expo-linear-gradient';
 import useThemeStore from '../store/themeStore';
 import useAuthStore from '../store/authStore';
@@ -36,6 +35,7 @@ import {
   extractFaceFeatures,
   getFaceData,
   calculateSimilarity,
+  detectFacesFromImage,
 } from '../services/faceRecognitionService';
 import {
   checkIn, checkOut,
@@ -150,9 +150,9 @@ export default function FaceVerificationScreen({ navigation, route }) {
     }).catch(() => setFaceDataLoading(false));
   }, [user, navigation, isWeb]);
 
-  // ── Face detection via detectFacesAsync polling ─────────────────────────────
-  // CameraView's onFacesDetected callback is unreliable on many Android devices.
-  // Poll with takePictureAsync + detectFacesAsync instead.
+  // ── Face detection via ML Kit polling ───────────────────────────────────────
+  // CameraView has no face-detection callback on SDK 52, so we poll: take a
+  // low-quality photo every 1.5 s and run ML Kit detection on it.
   useEffect(() => {
     if (isWeb || !isCameraReady || faceDataLoading) return;
     const id = setInterval(async () => {
@@ -162,24 +162,14 @@ export default function FaceVerificationScreen({ navigation, route }) {
         const photo = await cameraRef.current.takePictureAsync({
           quality: 0.15, skipProcessing: true, exif: false,
         });
-        const result = await FaceDetector.detectFacesAsync(photo.uri, {
-          mode: FaceDetector.FaceDetectorMode.fast,
-          detectLandmarks: FaceDetector.FaceDetectorLandmarks.all,
-          runClassifications: FaceDetector.FaceDetectorClassifications.all,
-        });
-        const normalized = (result.faces || []).map((f) => ({
-          ...f,
-          landmarks: {
-            leftEye:     f.leftEyePosition,
-            rightEye:    f.rightEyePosition,
-            nose:        f.noseBasePosition,
-            leftMouth:   f.leftMouthPosition,
-            rightMouth:  f.rightMouthPosition,
-            bottomMouth: f.bottomMouthPosition,
-          },
-        }));
-        handleFacesDetected({ faces: normalized });
-      } catch (_) { /* camera busy — skip */ }
+        const faces = await detectFacesFromImage(photo.uri);
+        handleFacesDetected({ faces });
+      } catch (e) {
+        if (e?.message === 'FACE_MODULE_MISSING' || /doesn't seem to be linked/.test(e?.message || '')) {
+          setFaceMessage('Face detection unavailable — please update the app');
+        }
+        /* otherwise camera busy — skip this tick */
+      }
       finally { pollActiveRef.current = false; }
     }, 1500);
     return () => clearInterval(id);

@@ -2,7 +2,8 @@
   "expo": {
     "name": "AttendTrack",
     "slug": "attendtrack",
-    "version": "1.0.2",
+    "version": "1.0.3",
+    "newArchEnabled": false,
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",

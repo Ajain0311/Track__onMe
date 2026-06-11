@@ -4,9 +4,65 @@
 // making measurements scale-invariant (independent of face distance from camera).
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 const FACE_DATA_KEY = '@face_data_v2';   // v2 = new normalized format
 const OLD_FACE_DATA_KEY = '@face_data';   // old format — detect & reject
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Face detection — Google ML Kit (on-device, native only)
+// expo-face-detector was removed from Expo SDK 51+, so detection runs through
+// @react-native-ml-kit/face-detection instead. Same ML Kit engine underneath,
+// so landmark coordinates are compatible with previously registered templates.
+// ─────────────────────────────────────────────────────────────────────────────
+
+let MLKitFaceDetection = null;
+if (Platform.OS !== 'web') {
+  try {
+    MLKitFaceDetection = require('@react-native-ml-kit/face-detection').default;
+  } catch (e) {
+    console.warn('[FaceRecognition] ML Kit face detection module unavailable:', e?.message);
+  }
+}
+
+/**
+ * Detect faces in a captured photo and return them in the shape the rest of
+ * this service expects: {bounds, yawAngle, rollAngle, pitchAngle,
+ * smilingProbability, left/rightEyeOpenProbability, landmarks:{leftEye,
+ * rightEye, nose, leftMouth, rightMouth, bottomMouth}} with {x, y} points.
+ */
+export const detectFacesFromImage = async (imageUri) => {
+  if (!MLKitFaceDetection) {
+    throw new Error('FACE_MODULE_MISSING');
+  }
+  const faces = await MLKitFaceDetection.detect(imageUri, {
+    performanceMode: 'fast',
+    landmarkMode: 'all',
+    classificationMode: 'all',
+    minFaceSize: 0.15,
+  });
+  return (faces || []).map((f) => ({
+    bounds: {
+      origin: { x: f.frame?.left ?? 0, y: f.frame?.top ?? 0 },
+      size: { width: f.frame?.width ?? 0, height: f.frame?.height ?? 0 },
+    },
+    // ML Kit Euler angles: X = pitch, Y = yaw, Z = roll
+    yawAngle:   f.rotationY,
+    rollAngle:  f.rotationZ,
+    pitchAngle: f.rotationX,
+    smilingProbability:     f.smilingProbability,
+    leftEyeOpenProbability: f.leftEyeOpenProbability,
+    rightEyeOpenProbability: f.rightEyeOpenProbability,
+    landmarks: {
+      leftEye:     f.landmarks?.leftEye?.position,
+      rightEye:    f.landmarks?.rightEye?.position,
+      nose:        f.landmarks?.noseBase?.position,
+      leftMouth:   f.landmarks?.mouthLeft?.position,
+      rightMouth:  f.landmarks?.mouthRight?.position,
+      bottomMouth: f.landmarks?.mouthBottom?.position,
+    },
+  }));
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Face position validation (unchanged from before)
