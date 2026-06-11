@@ -228,6 +228,14 @@ export const adminGetAbsenteeism   = (days = 30, threshold = 70) => api.get('/ad
 
 export const getHolidays = (year) => api.get('/holidays', { params: { year } });
 
+// ─── Designations ────────────────────────────────────────────────────────────
+
+export const getDesignations        = () => api.get('/designations');
+export const adminGetDesignations   = () => api.get('/admin/designations');
+export const adminCreateDesignation = (payload) => api.post('/admin/designations', payload);
+export const adminUpdateDesignation = (id, payload) => api.put(`/admin/designations/${id}`, payload);
+export const adminDeleteDesignation = (id) => api.delete(`/admin/designations/${id}`);
+
 // ─── Shifts ──────────────────────────────────────────────────────────────────
 
 export const getShifts             = () => api.get('/shifts');

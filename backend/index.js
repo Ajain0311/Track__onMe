@@ -29,6 +29,7 @@ const analyticsRoutes       = require('./routes/analytics');
 const holidayRoutes         = require('./routes/holidays');
 const managerRoutes         = require('./routes/manager');
 const shiftRoutes           = require('./routes/shifts');
+const designationRoutes     = require('./routes/designations');
 
 const app  = express();
 const PORT = process.env.PORT || 5000;
@@ -74,6 +75,7 @@ app.use('/api/analytics',          analyticsRoutes);         // personal analyti
 app.use('/api/holidays',           holidayRoutes);           // holiday calendar
 app.use('/api/manager',            managerRoutes);           // manager team view
 app.use('/api/shifts',             shiftRoutes);             // public shift list
+app.use('/api/designations',       designationRoutes);       // public designation list
 app.use('/api/admin',              adminRoutes);             // protected internally
 
 // ─── 404 + error handler (must be last) ───────────────────────────────────────

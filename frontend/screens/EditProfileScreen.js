@@ -8,7 +8,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import useThemeStore from '../store/themeStore';
 import useAuthStore from '../store/authStore';
-import { getMyProfile, updateMyProfile, getDepartments, getApiErrorMessage } from '../services/api';
+import { getMyProfile, updateMyProfile, getDepartments, getDesignations, getApiErrorMessage } from '../services/api';
 import { useToast } from '../components/ToastProvider';
 import ScreenHeader from '../components/ScreenHeader';
 
@@ -42,6 +42,7 @@ export default function EditProfileScreen({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [departments, setDepartments] = useState([]);
+  const [designationsList, setDesignationsList] = useState([]);
 
   const [displayName, setDisplayName] = useState('');
   const [phone, setPhone] = useState('');
@@ -52,8 +53,8 @@ export default function EditProfileScreen({ navigation }) {
   const [departmentId, setDepartmentId] = useState(null);
 
   useEffect(() => {
-    Promise.all([getMyProfile(), getDepartments()])
-      .then(([profileRes, deptRes]) => {
+    Promise.all([getMyProfile(), getDepartments(), getDesignations().catch(() => ({ data: { designations: [] } }))])
+      .then(([profileRes, deptRes, desigRes]) => {
         const p = profileRes.data.profile;
         if (p) {
           setDisplayName(p.displayName || '');
@@ -65,6 +66,7 @@ export default function EditProfileScreen({ navigation }) {
           setDepartmentId(p.departmentId || null);
         }
         setDepartments(deptRes.data.departments || []);
+        setDesignationsList(desigRes.data.designations || []);
       })
       .catch((e) => toast.error(getApiErrorMessage(e)))
       .finally(() => setLoading(false));
@@ -130,7 +132,30 @@ export default function EditProfileScreen({ navigation }) {
 
         {/* Work info */}
         <Text style={[s.sectionTitle, { color: g.textMuted, marginTop: 20 }]}>WORK INFO</Text>
-        <Field label="Designation / Title" value={designation} onChangeText={setDesignation} placeholder="e.g. Software Engineer" g={g} maxLength={100} />
+        {designationsList.length > 0 ? (
+          <View style={s.field}>
+            <Text style={[s.label, { color: g.textMuted }]}>Designation / Title</Text>
+            <View style={s.deptGrid}>
+              <TouchableOpacity
+                onPress={() => setDesignation('')}
+                style={[s.deptCard, { borderColor: !designation ? g.accent : g.border, backgroundColor: !designation ? g.accentSoft : g.glass }]}
+              >
+                <Text style={[s.deptName, { color: !designation ? g.accent : g.textMuted }]}>None</Text>
+              </TouchableOpacity>
+              {designationsList.map((d) => {
+                const sel = designation === d.name;
+                return (
+                  <TouchableOpacity key={d.id} onPress={() => setDesignation(d.name)}
+                    style={[s.deptCard, { borderColor: sel ? g.accent : g.border, backgroundColor: sel ? g.accentSoft : g.glass }]}>
+                    <Text style={[s.deptName, { color: sel ? g.accent : g.text }]}>{d.name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        ) : (
+          <Field label="Designation / Title" value={designation} onChangeText={setDesignation} placeholder="e.g. Software Engineer" g={g} maxLength={100} />
+        )}
         <Field label="Employee ID" value={employeeId} onChangeText={setEmployeeId} placeholder="e.g. EMP-001" g={g} maxLength={50} />
         {Platform.OS === 'web' ? (
           <View style={s.field}>
