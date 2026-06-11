@@ -63,6 +63,10 @@ app.get('/health',  (_req, res) => res.json({ status: 'ok', uptime: process.upti
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
+// Public signup — strict per-IP rate limit, no auth required
+const { signup } = require('./controllers/authController');
+app.post('/api/auth/signup', rateLimit({ windowMs: 15 * 60_000, max: 5 }), signup);
+
 // QR check-in — must be before attendanceRoutes to avoid wildcard clash
 app.post('/api/qr-checkin', verifyToken, qrCheckIn);
 
@@ -81,6 +85,10 @@ app.use('/api/holidays',           holidayRoutes);           // holiday calendar
 app.use('/api/manager',            managerRoutes);           // manager team view
 app.use('/api/shifts',             shiftRoutes);             // public shift list
 app.use('/api/designations',       designationRoutes);       // public designation list
+
+// Employee's own salary view
+const { getMySalary } = require('./controllers/salaryController');
+app.get('/api/salary/me', verifyToken, getMySalary);
 app.use('/api/admin',              adminRoutes);             // protected internally
 
 // ─── 404 + error handler (must be last) ───────────────────────────────────────
@@ -91,6 +99,10 @@ app.use(errorHandler);
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 app.listen(PORT, () => logger.info(`AttendTrack API listening on port ${PORT}`));
+
+// Periodic jobs: salary autopay + playful check-in nudges
+const { startScheduler } = require('./services/scheduler');
+startScheduler();
 
 // Crash visibility — never crash silently in production
 process.on('unhandledRejection', (reason) => logger.error('UnhandledRejection', { reason: reason?.message || reason }));

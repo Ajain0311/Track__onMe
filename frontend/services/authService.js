@@ -14,11 +14,22 @@ export const signIn = async (email, password) => {
 
 /**
  * Register a new user with email & password.
+ *
+ * Goes through the backend (which creates the account pre-confirmed via the
+ * admin API) because the Supabase project has email confirmation enabled but
+ * no SMTP — direct auth.signUp() accounts could never sign in. After the
+ * account is created we sign in immediately so the user lands in the app.
  */
-export const signUp = async (email, password) => {
-  const { data, error } = await supabase.auth.signUp({ email, password });
-  if (error) throw error;
-  return data.user;
+export const signUp = async (email, password, displayName) => {
+  const { BASE_URL } = require('./api'); // lazy — avoids import cycle
+  const res = await fetch(`${BASE_URL}/auth/signup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password, displayName }),
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body?.error || 'Sign-up failed. Please try again.');
+  return signIn(email, password);
 };
 
 /**

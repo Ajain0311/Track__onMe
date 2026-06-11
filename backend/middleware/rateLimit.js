@@ -13,11 +13,16 @@ const sweep = () => {
   lastSweep = Date.now();
 };
 
-// windowMs, max: classic sliding-window-counter
-const rateLimit = ({ windowMs = 60_000, max = 60, key = (req) => req.ip } = {}) =>
-  (req, _res, next) => {
+// windowMs, max: classic sliding-window-counter.
+// Each limiter instance gets its own key namespace — otherwise two limiters
+// (e.g. the global one and a stricter per-route one) would share buckets and
+// the strict limiter would count every request on the server.
+let instanceSeq = 0;
+const rateLimit = ({ windowMs = 60_000, max = 60, key = (req) => req.ip } = {}) => {
+  const ns = `L${instanceSeq++}:`;
+  return (req, _res, next) => {
     sweep();
-    const k = key(req);
+    const k = ns + key(req);
     const now = Date.now();
     const cutoff = now - windowMs;
     const arr = (buckets.get(k)?.hits ?? []).filter((t) => t > cutoff);
@@ -28,5 +33,6 @@ const rateLimit = ({ windowMs = 60_000, max = 60, key = (req) => req.ip } = {}) 
     }
     next();
   };
+};
 
 module.exports = rateLimit;
