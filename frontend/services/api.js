@@ -219,6 +219,10 @@ export const adminGetAnalytics = (days = 30) => api.get('/admin/analytics', { pa
 // ─── Holidays ────────────────────────────────────────────────────────────────
 
 export const getHolidays = (year) => api.get('/holidays', { params: { year } });
+
+// ─── Manager ─────────────────────────────────────────────────────────────────
+
+export const getManagerTeam = () => api.get('/manager/team');
 export const adminGetHolidays    = () => api.get('/admin/holidays');
 export const adminCreateHoliday  = (payload) => api.post('/admin/holidays', payload);
 export const adminUpdateHoliday  = (id, payload) => api.put(`/admin/holidays/${id}`, payload);

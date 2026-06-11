@@ -21,7 +21,7 @@ const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 export default function SettingsScreen({ navigation }) {
   const { colors: g, gradients: grad, themeMode, setThemeMode } = useThemeStore();
   const { totalTimeSeconds, sessions, resetAll, dailyTotals } = useTimeStore();
-  const { user, isAdmin, setIsAdmin } = useAuthStore();
+  const { user, isAdmin, setIsAdmin, role } = useAuthStore();
   const { goals, updateGoals, computeStreak } = useGoalStore();
 
   const [isResetting, setIsResetting] = useState(false);
@@ -29,11 +29,16 @@ export default function SettingsScreen({ navigation }) {
   const [appVersion] = useState('1.0.0');
   const [isRetryingRole, setIsRetryingRole] = useState(false);
   const [roleRetryMsg, setRoleRetryMsg] = useState(null);
+  const [userRole, setUserRole] = useState(isAdmin ? 'admin' : 'user');
 
   useFocusEffect(
     useCallback(() => {
       if (user?.id) {
         hasFaceData(user.id).then(setFaceRegistered);
+        getMe().then((res) => {
+          const r = res.data?.role || 'user';
+          setUserRole(r);
+        }).catch(() => {});
       }
     }, [user?.id])
   );
@@ -354,6 +359,17 @@ export default function SettingsScreen({ navigation }) {
               subtitle="Browse all team members"
               onPress={() => navigation.navigate('EmployeeDirectory')}
             />
+            {(userRole === 'manager' || userRole === 'admin') && (
+              <>
+                <View style={[st.divider, { backgroundColor: g.border }]} />
+                <SettingRow
+                  icon="👥"
+                  title="My Team"
+                  subtitle="Live attendance view for your department"
+                  onPress={() => navigation.navigate('TeamDashboard')}
+                />
+              </>
+            )}
           </LinearGradient>
         </View>
 
