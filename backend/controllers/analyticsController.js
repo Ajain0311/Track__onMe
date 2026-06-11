@@ -1,6 +1,6 @@
 // controllers/analyticsController.js
 
-const asyncHandler = require('../middleware/asyncHandler');
+const asyncHandler = require('../utils/asyncHandler');
 const { getPersonalAnalytics, getOrgAnalytics, getAbsenteeismReport } = require('../services/analyticsService');
 
 const getMyAnalytics = asyncHandler(async (req, res) => {
