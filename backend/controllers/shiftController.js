@@ -1,6 +1,6 @@
 // controllers/shiftController.js
 
-const asyncHandler = require('../middleware/asyncHandler');
+const asyncHandler = require('../utils/asyncHandler');
 const AppError     = require('../utils/AppError');
 const {
   getAllShifts, createShift, updateShift, deleteShift,

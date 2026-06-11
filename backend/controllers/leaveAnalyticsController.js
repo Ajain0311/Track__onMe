@@ -1,6 +1,6 @@
 // controllers/leaveAnalyticsController.js
 
-const asyncHandler          = require('../middleware/asyncHandler');
+const asyncHandler          = require('../utils/asyncHandler');
 const { getLeaveAnalytics } = require('../services/leaveAnalyticsService');
 
 const getAdminLeaveAnalytics = asyncHandler(async (req, res) => {

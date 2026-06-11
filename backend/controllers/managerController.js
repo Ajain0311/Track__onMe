@@ -1,6 +1,6 @@
 // controllers/managerController.js
 
-const asyncHandler = require('../middleware/asyncHandler');
+const asyncHandler = require('../utils/asyncHandler');
 const { getTeamOverview } = require('../services/managerService');
 
 const getMyTeam = asyncHandler(async (req, res) => {

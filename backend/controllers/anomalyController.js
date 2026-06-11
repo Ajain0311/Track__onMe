@@ -1,6 +1,6 @@
 // controllers/anomalyController.js
 
-const asyncHandler       = require('../middleware/asyncHandler');
+const asyncHandler       = require('../utils/asyncHandler');
 const { detectAnomalies } = require('../services/anomalyService');
 
 const getAnomalies = asyncHandler(async (req, res) => {

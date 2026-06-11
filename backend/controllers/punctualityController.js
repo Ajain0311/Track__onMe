@@ -1,6 +1,6 @@
 // controllers/punctualityController.js
 
-const asyncHandler = require('../middleware/asyncHandler');
+const asyncHandler = require('../utils/asyncHandler');
 const { getPersonalPunctuality, getOrgPunctuality } = require('../services/punctualityService');
 
 const getMyPunctuality = asyncHandler(async (req, res) => {
