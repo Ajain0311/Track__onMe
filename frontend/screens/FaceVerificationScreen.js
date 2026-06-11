@@ -36,6 +36,7 @@ import {
   getFaceData,
   calculateSimilarity,
   detectFacesFromImage,
+  averageFeatures,
 } from '../services/faceRecognitionService';
 import {
   checkIn, checkOut,
@@ -92,6 +93,10 @@ export default function FaceVerificationScreen({ navigation, route }) {
   const slowTimerRef = useRef(null);
   const consecutiveRef = useRef(0);
   const pollActiveRef = useRef(false);
+  // Features from frames that passed the local pre-screen — the server check
+  // uses the average of the last 3, which is far more stable than any single
+  // frame (same multi-sample idea registration already uses).
+  const matchedFeaturesRef = useRef([]);
 
   const showToast = (message, type = 'success') =>
     setToast({ visible: true, message, type });
@@ -200,6 +205,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
       currentFaceRef.current = null;
       setLightingQuality('unknown');
       consecutiveRef.current = 0;
+      matchedFeaturesRef.current = [];
       setConsecutiveMatches(0);
       setFaceMatchConfirmed(false);
       return;
@@ -211,6 +217,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
       setFaceBounds(null);
       currentFaceRef.current = null;
       consecutiveRef.current = 0;
+      matchedFeaturesRef.current = [];
       setConsecutiveMatches(0);
       setFaceMatchConfirmed(false);
       return;
@@ -231,6 +238,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
       setFaceMessage(validation.message);
       setSimilarity(0);
       consecutiveRef.current = 0;
+      matchedFeaturesRef.current = [];
       setConsecutiveMatches(0);
       setFaceMatchConfirmed(false);
       return;
@@ -249,6 +257,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
           consecutiveRef.current += 1;
           const count = consecutiveRef.current;
           setConsecutiveMatches(count);
+          matchedFeaturesRef.current = [...matchedFeaturesRef.current.slice(-4), currentFeatures];
 
           if (count >= CONSECUTIVE_MATCHES) {
             setFaceMatchConfirmed(true);
@@ -260,6 +269,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
           consecutiveRef.current = 0;
           setConsecutiveMatches(0);
           setFaceMatchConfirmed(false);
+          matchedFeaturesRef.current = [];
           setFaceMessage(
             sim > 0.5
               ? `Partial match (${Math.round(sim * 100)}%) — adjust position`
@@ -370,12 +380,16 @@ export default function FaceVerificationScreen({ navigation, route }) {
       return;
     }
 
-    // Extract current features for server verification
+    // Build the verification sample: average the last 3 pre-screened frames
+    // (plus the current one) so one noisy frame can't fail an honest match.
     const currentFeature = currentFaceRef.current
       ? extractFaceFeatures(currentFaceRef.current)
       : null;
+    const samples = [...matchedFeaturesRef.current.slice(-3)];
+    if (currentFeature?.__v === 2) samples.push(currentFeature);
+    const verifyFeature = samples.length >= 2 ? averageFeatures(samples) : currentFeature;
 
-    if (!currentFeature || currentFeature.__v !== 2) {
+    if (!verifyFeature || verifyFeature.__v !== 2) {
       clearTimeout(slowTimerRef.current);
       showToast('Could not extract face features. Look directly at the camera.', 'error');
       setIsProcessing(false);
@@ -384,7 +398,7 @@ export default function FaceVerificationScreen({ navigation, route }) {
 
     // Send to server for final authoritative comparison
     try {
-      const { data } = await verifyFaceWithServer(currentFeature, mode);
+      const { data } = await verifyFaceWithServer(verifyFeature, mode);
       const faceToken = data?.token;
       if (!faceToken) throw new Error('Server did not return a verification token.');
       if (mode === 'checkin') await performCheckIn(faceToken);
