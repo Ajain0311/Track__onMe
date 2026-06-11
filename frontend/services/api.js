@@ -227,6 +227,17 @@ export const adminGetPunctuality   = (days = 30) => api.get('/admin/punctuality'
 
 export const getHolidays = (year) => api.get('/holidays', { params: { year } });
 
+// ─── Shifts ──────────────────────────────────────────────────────────────────
+
+export const getShifts             = () => api.get('/shifts');
+export const adminGetShifts        = () => api.get('/admin/shifts');
+export const adminCreateShift      = (payload) => api.post('/admin/shifts', payload);
+export const adminUpdateShift      = (id, payload) => api.put(`/admin/shifts/${id}`, payload);
+export const adminDeleteShift      = (id) => api.delete(`/admin/shifts/${id}`);
+export const adminGetAssignments   = () => api.get('/admin/shifts/assignments');
+export const adminAssignShift      = (userId, shiftId) => api.post('/admin/shifts/assignments', { userId, shiftId });
+export const adminRemoveAssignment = (userId) => api.delete(`/admin/shifts/assignments/${userId}`);
+
 // ─── Manager ─────────────────────────────────────────────────────────────────
 
 export const getManagerTeam = () => api.get('/manager/team');

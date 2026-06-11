@@ -38,6 +38,10 @@ const {
   adminListHolidays, adminCreateHoliday,
   adminUpdateHoliday, adminDeleteHoliday,
 } = require('../controllers/holidayController');
+const {
+  listShifts, createShiftHandler, updateShiftHandler, deleteShiftHandler,
+  listAssignments, assignShiftHandler, removeAssignmentHandler,
+} = require('../controllers/shiftController');
 
 // All admin routes require authentication + admin (or manager / super_admin) role
 router.use(verifyToken, requireRole(['admin', 'manager']));
@@ -157,5 +161,14 @@ router.get('/holidays',      adminListHolidays);
 router.post('/holidays',     adminCreateHoliday);
 router.put('/holidays/:id',  adminUpdateHoliday);
 router.delete('/holidays/:id', adminDeleteHoliday);
+
+// ─── Shifts ───────────────────────────────────────────────────────────────────
+router.get('/shifts',              listShifts);
+router.post('/shifts',             createShiftHandler);
+router.put('/shifts/:id',          updateShiftHandler);
+router.delete('/shifts/:id',       deleteShiftHandler);
+router.get('/shifts/assignments',  listAssignments);
+router.post('/shifts/assignments', assignShiftHandler);
+router.delete('/shifts/assignments/:userId', removeAssignmentHandler);
 
 module.exports = router;
