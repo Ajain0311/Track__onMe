@@ -1,9 +1,9 @@
 // services/designationService.js
 
-const { supabaseAdmin } = require('./supabase');
+const { supabase } = require('./supabase');
 
 async function getActiveDesignations() {
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await supabase
     .from('designations')
     .select('id, name, level')
     .eq('is_active', true)
@@ -14,7 +14,7 @@ async function getActiveDesignations() {
 }
 
 async function getAllDesignations() {
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await supabase
     .from('designations')
     .select('*')
     .order('level', { ascending: true })
@@ -24,7 +24,7 @@ async function getAllDesignations() {
 }
 
 async function createDesignation({ name, level = 1 }) {
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await supabase
     .from('designations')
     .insert({ name, level })
     .select()
@@ -38,7 +38,7 @@ async function updateDesignation(id, patch) {
   if (patch.name  !== undefined) update.name      = patch.name;
   if (patch.level !== undefined) update.level     = patch.level;
   if (patch.isActive !== undefined) update.is_active = patch.isActive;
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await supabase
     .from('designations')
     .update(update)
     .eq('id', id)
@@ -49,7 +49,7 @@ async function updateDesignation(id, patch) {
 }
 
 async function deleteDesignation(id) {
-  const { error } = await supabaseAdmin
+  const { error } = await supabase
     .from('designations')
     .delete()
     .eq('id', id);
