@@ -15,6 +15,8 @@ const AppError        = require('./utils/AppError');
 require('./services/supabase');
 
 const attendanceRoutes      = require('./routes/attendance');
+const { qrCheckIn }         = require('./controllers/qrController');
+const { verifyToken }       = require('./middleware/auth');
 const adminRoutes           = require('./routes/admin');
 const locationRoutes        = require('./routes/locations');
 const locationRequestRoutes = require('./routes/locationRequests');
@@ -60,6 +62,9 @@ app.get('/',        (_req, res) => res.json({ status: 'ok', message: 'AttendTrac
 app.get('/health',  (_req, res) => res.json({ status: 'ok', uptime: process.uptime(), version: '2.0.0' }));
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
+
+// QR check-in — must be before attendanceRoutes to avoid wildcard clash
+app.post('/api/qr-checkin', verifyToken, qrCheckIn);
 
 app.use('/api',                    attendanceRoutes);        // /api/checkin, /api/status, /api/me …
 app.use('/api/face',               faceRoutes);             // /api/face/register, /api/face/verify …

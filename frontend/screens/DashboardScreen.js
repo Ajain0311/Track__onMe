@@ -459,6 +459,18 @@ export default function DashboardScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
+        {/* ── QR alternative ── */}
+        {Platform.OS !== 'web' && (
+          <TouchableOpacity
+            style={[s.qrBtn, { borderColor: g.border, backgroundColor: g.glass }]}
+            onPress={() => navigation.navigate('QrScan')}
+            activeOpacity={0.8}
+          >
+            <Text style={{ fontSize: 15, marginRight: 6 }}>📷</Text>
+            <Text style={[s.qrBtnTxt, { color: g.textMuted }]}>Scan Location QR</Text>
+          </TouchableOpacity>
+        )}
+
         {/* ── Live session timer ── */}
         {effectiveIsCheckedIn ? (
           <Animated.View style={{ transform: [{ scale: pulseAnim }], marginBottom: 16 }}>
@@ -660,7 +672,9 @@ const s = StyleSheet.create({
   statusSub: { fontSize: 13, lineHeight: 20 },
   liveBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8, borderWidth: 1, marginLeft: 8 },
 
-  buttonRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  buttonRow: { flexDirection: 'row', gap: 12, marginBottom: 10 },
+  qrBtn:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderRadius: 12, borderWidth: 1, paddingVertical: 10, marginBottom: 16 },
+  qrBtnTxt: { fontSize: 13, fontWeight: '700' },
   btnShell: { flex: 1, borderRadius: 18, overflow: 'hidden', elevation: 8, shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 14, shadowOffset: { width: 0, height: 6 } },
   btnOff: { opacity: 0.38 },
   btnPressed: { transform: [{ scale: 0.965 }] },

@@ -257,6 +257,11 @@ export const adminRemoveAssignment = (userId) => api.delete(`/admin/shifts/assig
 // ─── Manager ─────────────────────────────────────────────────────────────────
 
 export const getManagerTeam = () => api.get('/manager/team');
+// ─── QR Attendance ───────────────────────────────────────────────────────────
+
+export const adminGetLocationQr = (locationId) => api.get(`/admin/locations/${locationId}/qr`);
+export const qrCheckIn          = (token) => api.post('/qr-checkin', { token });
+
 export const adminGetHolidays    = () => api.get('/admin/holidays');
 export const adminCreateHoliday  = (payload) => api.post('/admin/holidays', payload);
 export const adminUpdateHoliday  = (id, payload) => api.put(`/admin/holidays/${id}`, payload);

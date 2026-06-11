@@ -48,6 +48,7 @@ const {
 } = require('../controllers/designationController');
 const { getAnomalies }              = require('../controllers/anomalyController');
 const { getAdminLeaveAnalytics }    = require('../controllers/leaveAnalyticsController');
+const { generateLocationQr }        = require('../controllers/qrController');
 
 // All admin routes require authentication + admin (or manager / super_admin) role
 router.use(verifyToken, requireRole(['admin', 'manager']));
@@ -82,6 +83,7 @@ const locationBodySchema = {
 };
 
 router.get('/locations',          listAll);
+router.get('/locations/:id/qr',   validate({ params: { id: { type: 'uuid', required: true } } }), generateLocationQr);
 router.get('/locations/:id',      validate({ params: { id: { type: 'uuid', required: true } } }), getOne);
 router.post('/locations',         validate({ body: locationBodySchema }), create);
 router.put('/locations/:id',      validate({ params: { id: { type: 'uuid', required: true } } }), update);
