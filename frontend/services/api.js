@@ -222,6 +222,7 @@ export const getPersonalAnalytics  = () => api.get('/analytics/summary');
 export const getPersonalPunctuality = (months = 3) => api.get('/analytics/punctuality', { params: { months } });
 export const adminGetAnalytics     = (days = 30) => api.get('/admin/analytics', { params: { days } });
 export const adminGetPunctuality   = (days = 30) => api.get('/admin/punctuality', { params: { days } });
+export const adminGetAbsenteeism   = (days = 30, threshold = 70) => api.get('/admin/absenteeism', { params: { days, threshold } });
 
 // ─── Holidays ────────────────────────────────────────────────────────────────
 

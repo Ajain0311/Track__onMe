@@ -31,7 +31,7 @@ const {
   adminCreateDepartment, adminUpdateDepartment, adminDeleteDepartment,
   adminListProfiles, adminSetUserDepartment,
 } = require('../controllers/departmentController');
-const { getAdminAnalytics }    = require('../controllers/analyticsController');
+const { getAdminAnalytics, getAbsenteeism } = require('../controllers/analyticsController');
 const { getOrgSettings, updateOrgSettings } = require('../controllers/orgSettingsController');
 const { getAdminPunctuality }  = require('../controllers/punctualityController');
 const {
@@ -151,6 +151,7 @@ router.get('/audit-logs', listAuditLogs);
 // ─── Analytics ────────────────────────────────────────────────────────────────
 router.get('/analytics',    getAdminAnalytics);
 router.get('/punctuality',  getAdminPunctuality);
+router.get('/absenteeism',  getAbsenteeism);
 
 // ─── Org Settings ─────────────────────────────────────────────────────────────
 router.get('/settings',     getOrgSettings);

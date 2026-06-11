@@ -275,4 +275,114 @@ const getOrgAnalytics = async (days = 30) => {
   };
 };
 
-module.exports = { getPersonalAnalytics, getOrgAnalytics };
+// ── Absenteeism Report ──────────────────────────────────────────────────────
+
+const getAbsenteeismReport = async ({ days = 30, threshold = 70 } = {}) => {
+  const now = new Date();
+  const todayStr = toDateStr(now);
+  const startDate = new Date(now);
+  startDate.setDate(startDate.getDate() - (days - 1));
+  const startStr = toDateStr(startDate);
+  const year = now.getFullYear();
+
+  const [attendanceRes, usersRes, profilesRes, holidays] = await Promise.all([
+    supabase
+      .from('attendance')
+      .select('user_id, check_in_time, date')
+      .gte('check_in_time', `${startStr}T00:00:00`)
+      .order('check_in_time', { ascending: true }),
+    supabase.auth.admin.listUsers({ perPage: 1000 }),
+    supabase
+      .from('employee_profiles')
+      .select('user_id, display_name, designation, department_id, departments(id, name, color)'),
+    getHolidaysForYear(year).catch(() => []),
+  ]);
+
+  if (attendanceRes.error) throw new Error(attendanceRes.error.message);
+
+  const sessions  = attendanceRes.data || [];
+  const allUsers  = usersRes.data?.users || [];
+  const profiles  = profilesRes.data || [];
+  const holidaySet = buildHolidaySet(holidays);
+
+  const dateRange   = buildDateRange(startStr, todayStr);
+  const workdays    = dateRange.filter((d) => isWorkday(d, holidaySet));
+  const workdaySet  = new Set(workdays);
+
+  const emailMap   = Object.fromEntries(allUsers.map((u) => [u.id, u.email]));
+  const profileMap = Object.fromEntries(profiles.map((p) => [p.user_id, p]));
+
+  // Build user → present-days map
+  const userPresentDays = {};
+  for (const s of sessions) {
+    const d = s.date || s.check_in_time?.split('T')[0];
+    if (!d || !workdaySet.has(d)) continue;
+    if (!userPresentDays[s.user_id]) userPresentDays[s.user_id] = new Set();
+    userPresentDays[s.user_id].add(d);
+  }
+
+  const totalWorkdays = workdays.length;
+
+  const employees = allUsers
+    .filter((u) => u.role !== 'service_role')
+    .map((u) => {
+      const presentSet = userPresentDays[u.id] || new Set();
+      const presentCount = presentSet.size;
+      const rate = totalWorkdays > 0 ? Math.round((presentCount / totalWorkdays) * 100) : 0;
+      const absentDays = totalWorkdays - presentCount;
+      const profile = profileMap[u.id];
+      return {
+        userId:     u.id,
+        email:      u.email,
+        displayName: profile?.display_name || null,
+        designation: profile?.designation || null,
+        department:  profile?.departments?.name || null,
+        deptColor:   profile?.departments?.color || null,
+        presentDays: presentCount,
+        absentDays,
+        totalWorkdays,
+        rate,
+        chronic: rate < threshold,
+      };
+    });
+
+  const chronic = employees.filter((e) => e.chronic).sort((a, b) => a.rate - b.rate);
+
+  // Department-level breakdown
+  const deptAbsMap = {};
+  for (const emp of employees) {
+    if (!emp.department) continue;
+    if (!deptAbsMap[emp.department]) {
+      deptAbsMap[emp.department] = { name: emp.department, color: emp.deptColor, total: 0, chronic: 0, rateSum: 0 };
+    }
+    deptAbsMap[emp.department].total++;
+    deptAbsMap[emp.department].rateSum += emp.rate;
+    if (emp.chronic) deptAbsMap[emp.department].chronic++;
+  }
+  const deptBreakdown = Object.values(deptAbsMap).map((d) => ({
+    ...d,
+    avgRate: d.total > 0 ? Math.round(d.rateSum / d.total) : 0,
+    chronicRate: d.total > 0 ? Math.round((d.chronic / d.total) * 100) : 0,
+  })).sort((a, b) => a.avgRate - b.avgRate);
+
+  const totalEmployees = employees.length;
+  const chronicCount   = chronic.length;
+
+  return {
+    chronic,
+    deptBreakdown,
+    summary: {
+      totalEmployees,
+      chronicCount,
+      chronicRate: totalEmployees > 0 ? Math.round((chronicCount / totalEmployees) * 100) : 0,
+      avgAttendanceRate: totalEmployees > 0
+        ? Math.round(employees.reduce((s, e) => s + e.rate, 0) / totalEmployees)
+        : 0,
+      period:    days,
+      threshold,
+      workdays:  totalWorkdays,
+    },
+  };
+};
+
+module.exports = { getPersonalAnalytics, getOrgAnalytics, getAbsenteeismReport };

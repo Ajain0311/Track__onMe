@@ -1,7 +1,7 @@
 // controllers/analyticsController.js
 
 const asyncHandler = require('../middleware/asyncHandler');
-const { getPersonalAnalytics, getOrgAnalytics } = require('../services/analyticsService');
+const { getPersonalAnalytics, getOrgAnalytics, getAbsenteeismReport } = require('../services/analyticsService');
 
 const getMyAnalytics = asyncHandler(async (req, res) => {
   const data = await getPersonalAnalytics(req.user.id);
@@ -14,4 +14,11 @@ const getAdminAnalytics = asyncHandler(async (req, res) => {
   res.json(data);
 });
 
-module.exports = { getMyAnalytics, getAdminAnalytics };
+const getAbsenteeism = asyncHandler(async (req, res) => {
+  const days      = Math.min(Math.max(parseInt(req.query.days, 10) || 30, 7), 90);
+  const threshold = Math.min(Math.max(parseInt(req.query.threshold, 10) || 70, 10), 100);
+  const data = await getAbsenteeismReport({ days, threshold });
+  res.json(data);
+});
+
+module.exports = { getMyAnalytics, getAdminAnalytics, getAbsenteeism };
