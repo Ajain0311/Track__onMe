@@ -29,6 +29,7 @@ const ALL_ITEMS = [
   { key: 'departments', section: 'people',     emoji: '🏢', title: 'Departments',            sub: 'Manage department structure',       screen: 'AdminDepartments' },
   { key: 'designations',section: 'people',     emoji: '🏷️', title: 'Designations',           sub: 'Job titles & role levels',          screen: 'AdminDesignations' },
   { key: 'shifts',      section: 'people',     emoji: '🕐', title: 'Shift Management',       sub: 'Define shifts & assign employees',  screen: 'AdminShifts' },
+  { key: 'salaries',    section: 'people',     emoji: '💸', title: 'Payroll & Salaries',     sub: 'Set salaries, dispatch & autopay',  screen: 'AdminSalaries' },
   // Configuration
   { key: 'locations',   section: 'config',     emoji: '📍', title: 'Manage Locations',       sub: 'Add, edit, toggle office locations',screen: 'AdminLocations' },
   { key: 'holidays',    section: 'config',     emoji: '🎉', title: 'Holiday Calendar',       sub: 'Public & company holidays',         screen: 'AdminHolidays' },

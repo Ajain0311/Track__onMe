@@ -45,6 +45,7 @@ import AdminAnomaliesScreen from './screens/admin/AdminAnomaliesScreen';
 import AdminLeaveAnalyticsScreen from './screens/admin/AdminLeaveAnalyticsScreen';
 import AdminEmployeeDetailScreen from './screens/admin/AdminEmployeeDetailScreen';
 import AdminLocationQrScreen from './screens/admin/AdminLocationQrScreen';
+import AdminSalariesScreen from './screens/admin/AdminSalariesScreen';
 import QrScanScreen from './screens/QrScanScreen';
 import EditProfileScreen from './screens/EditProfileScreen';
 import LeaveBalanceScreen from './screens/LeaveBalanceScreen';
@@ -337,6 +338,7 @@ export default function App() {
                 <Stack.Screen name="AdminLeaveAnalytics" component={AdminLeaveAnalyticsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminEmployeeDetail" component={AdminEmployeeDetailScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminLocationQr" component={AdminLocationQrScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AdminSalaries" component={AdminSalariesScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="QrScan" component={QrScanScreen} options={{ animation: 'slide_from_bottom', presentation: 'fullScreenModal' }} />
                 <Stack.Screen name="LeaveBalance" component={LeaveBalanceScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="EmployeeDirectory" component={EmployeeDirectoryScreen} options={{ animation: 'slide_from_right' }} />

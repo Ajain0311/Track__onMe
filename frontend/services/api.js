@@ -279,6 +279,17 @@ export const adminGetAssignments   = () => api.get('/admin/shifts/assignments');
 export const adminAssignShift      = (userId, shiftId) => api.post('/admin/shifts/assignments', { userId, shiftId });
 export const adminRemoveAssignment = (userId) => api.delete(`/admin/shifts/assignments/${userId}`);
 
+// ─── Salaries / Payroll ──────────────────────────────────────────────────────
+
+export const adminGetSalaries        = () => api.get('/admin/salaries');
+export const adminSetSalary          = (userId, payload) => api.put(`/admin/salaries/${userId}`, payload);
+export const adminDispatchSalary     = (userId, period) => api.post(`/admin/salaries/${userId}/dispatch`, { period });
+export const adminDispatchAllSalaries = (period) => api.post('/admin/salaries/dispatch-all', { period });
+export const adminGetSalaryPayouts   = (params = {}) => api.get('/admin/salary-payouts', { params });
+export const adminGetSalarySettings  = () => api.get('/admin/salary-settings');
+export const adminSetSalarySettings  = (payload) => api.put('/admin/salary-settings', payload);
+export const getMySalary             = () => api.get('/salary/me');
+
 // ─── Manager ─────────────────────────────────────────────────────────────────
 
 export const getManagerTeam = () => api.get('/manager/team');

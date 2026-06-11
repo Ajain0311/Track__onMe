@@ -49,6 +49,11 @@ const {
 const { getAnomalies }              = require('../controllers/anomalyController');
 const { getAdminLeaveAnalytics }    = require('../controllers/leaveAnalyticsController');
 const { generateLocationQr }        = require('../controllers/qrController');
+const {
+  adminListSalaries, adminSetSalary, adminDispatchOne,
+  adminDispatchAll, adminListPayouts,
+  adminGetSalarySettings, adminSetSalarySettings,
+} = require('../controllers/salaryController');
 
 // All admin routes require authentication + admin (or manager / super_admin) role
 router.use(verifyToken, requireRole(['admin', 'manager']));
@@ -178,6 +183,21 @@ router.get('/designations',        listAllDesignations);
 router.post('/designations',       createDesignation);
 router.put('/designations/:id',    updateDesignation);
 router.delete('/designations/:id', removeDesignation);
+
+// ─── Salaries ─────────────────────────────────────────────────────────────────
+router.get('/salaries',        adminListSalaries);
+router.put('/salaries/:userId',
+  validate({ params: { userId: { type: 'uuid', required: true } } }),
+  adminSetSalary,
+);
+router.post('/salaries/dispatch-all', adminDispatchAll);
+router.post('/salaries/:userId/dispatch',
+  validate({ params: { userId: { type: 'uuid', required: true } } }),
+  adminDispatchOne,
+);
+router.get('/salary-payouts',  adminListPayouts);
+router.get('/salary-settings', adminGetSalarySettings);
+router.put('/salary-settings', adminSetSalarySettings);
 
 // ─── Shifts ───────────────────────────────────────────────────────────────────
 router.get('/shifts',              listShifts);
