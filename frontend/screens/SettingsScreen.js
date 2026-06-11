@@ -378,6 +378,13 @@ export default function SettingsScreen({ navigation }) {
           <Text style={[st.sectionTitle, { color: g.textMuted }]}>LEAVES</Text>
           <LinearGradient colors={grad.card} style={[st.sectionCard, { borderColor: g.border }]}>
             <SettingRow
+              icon="💸"
+              title="My Salary"
+              subtitle="Salary, test bank account & payout history"
+              onPress={() => navigation.navigate('MySalary')}
+            />
+            <View style={[st.divider, { backgroundColor: g.border }]} />
+            <SettingRow
               icon="📊"
               title="Leave Balance"
               subtitle="See how many days you have left this year"

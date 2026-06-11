@@ -12,9 +12,9 @@ import useThemeStore from '../store/themeStore';
 
 // ── Android APK download URL ──────────────────────────────────────────────────
 // Update this after each EAS build (grab the URL from the EAS dashboard).
-// Permanent URL — always redirects to the newest GitHub release asset, so new
-// APK releases don't require a code change here.
-const APK_DOWNLOAD_URL = 'https://github.com/Ajain0311/Track__onMe/releases/latest/download/AttendTrack.apk';
+// Stable URL — a Netlify redirect (frontend/public/_redirects) forwards this
+// to the newest APK build, so new releases only need the redirect updated.
+const APK_DOWNLOAD_URL = 'https://attendeyesonme.netlify.app/download/app.apk';
 
 const toAuthEmail = (input) => {
   const t = input.trim().toLowerCase();
