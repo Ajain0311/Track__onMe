@@ -269,6 +269,22 @@ export default function AdminDashboardScreen({ navigation }) {
               </View>
             </TouchableOpacity>
 
+            {/* Holiday Calendar */}
+            <TouchableOpacity
+              style={[st.requestsCard, { backgroundColor: 'rgba(255,179,71,0.08)', borderColor: 'rgba(255,179,71,0.35)' }]}
+              onPress={() => navigation.navigate('AdminHolidays')}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text style={{ fontSize: 28 }}>🎉</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[st.actionLabel, { color: g.text }]}>Holiday Calendar</Text>
+                  <Text style={[st.actionSub, { color: g.textMuted }]}>Manage public & company holidays</Text>
+                </View>
+                <Text style={{ color: g.textDim, fontSize: 20 }}>›</Text>
+              </View>
+            </TouchableOpacity>
+
             {/* Departments action */}
             <TouchableOpacity
               style={[st.requestsCard, { backgroundColor: 'rgba(79,172,254,0.08)', borderColor: 'rgba(79,172,254,0.35)' }]}

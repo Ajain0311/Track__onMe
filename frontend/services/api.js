@@ -215,3 +215,11 @@ export const adminGetUserLeaveBalance = (userId, year) =>
 
 export const getPersonalAnalytics = () => api.get('/analytics/summary');
 export const adminGetAnalytics = (days = 30) => api.get('/admin/analytics', { params: { days } });
+
+// ─── Holidays ────────────────────────────────────────────────────────────────
+
+export const getHolidays = (year) => api.get('/holidays', { params: { year } });
+export const adminGetHolidays    = () => api.get('/admin/holidays');
+export const adminCreateHoliday  = (payload) => api.post('/admin/holidays', payload);
+export const adminUpdateHoliday  = (id, payload) => api.put(`/admin/holidays/${id}`, payload);
+export const adminDeleteHoliday  = (id) => api.delete(`/admin/holidays/${id}`);

@@ -8,7 +8,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import useThemeStore from '../store/themeStore';
-import { getAttendance, getMyLeaves, getApiErrorMessage } from '../services/api';
+import { getAttendance, getMyLeaves, getHolidays, getApiErrorMessage } from '../services/api';
 import { useToast } from '../components/ToastProvider';
 import ScreenHeader from '../components/ScreenHeader';
 
@@ -43,10 +43,11 @@ function buildCalendarGrid(year, month) {
   return grid;
 }
 
-function dayStatus(dateStr, attendanceMap, leaveMap) {
+function dayStatus(dateStr, attendanceMap, leaveMap, holidaySet) {
   const d = new Date(dateStr + 'T00:00:00');
   const dow = d.getDay();
   const isWeekend = dow === 0 || dow === 6;
+  if (holidaySet?.has(dateStr)) return { type: 'holiday', data: null };
   if (leaveMap[dateStr]) return { type: 'leave', data: leaveMap[dateStr] };
   if (attendanceMap[dateStr]) return { type: 'present', data: attendanceMap[dateStr] };
   const today = toDateStr(new Date());
@@ -66,6 +67,8 @@ export default function AttendanceCalendarScreen({ navigation }) {
 
   const [attendanceSessions, setAttendanceSessions] = useState([]);
   const [leaves, setLeaves]                         = useState([]);
+  const [holidaySet, setHolidaySet]                 = useState(new Set());
+  const [holidayNames, setHolidayNames]             = useState({});
   const [selectedDay, setSelectedDay]               = useState(null); // { dateStr, status }
 
   const load = useCallback(() => {
@@ -73,10 +76,16 @@ export default function AttendanceCalendarScreen({ navigation }) {
     Promise.all([
       getAttendance(),
       getMyLeaves({ status: 'all', year }),
+      getHolidays(year).catch(() => ({ data: { holidays: [] } })),
     ])
-      .then(([attRes, leavesRes]) => {
+      .then(([attRes, leavesRes, holRes]) => {
         setAttendanceSessions(attRes.data?.sessions || attRes.data?.attendance || []);
         setLeaves(leavesRes.data?.leaves || []);
+        const hols = holRes.data?.holidays || [];
+        setHolidaySet(new Set(hols.map((h) => h.date)));
+        const names = {};
+        for (const h of hols) names[h.date] = h.name;
+        setHolidayNames(names);
       })
       .catch((e) => toast.error(getApiErrorMessage(e)))
       .finally(() => setLoading(false));
@@ -124,25 +133,26 @@ export default function AttendanceCalendarScreen({ navigation }) {
   const summary = useMemo(() => {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const today = toDateStr(new Date());
-    let present = 0, absent = 0, leave = 0, weekends = 0;
+    let present = 0, absent = 0, leave = 0, holidays = 0;
     for (let d = 1; d <= daysInMonth; d++) {
       const ds = `${year}-${pad2(month + 1)}-${pad2(d)}`;
       if (ds > today) break;
-      const s = dayStatus(ds, attendanceMap, leaveMap);
-      if (s.type === 'present')  present++;
-      else if (s.type === 'absent')  absent++;
-      else if (s.type === 'leave')   leave++;
-      else if (s.type === 'weekend') weekends++;
+      const s = dayStatus(ds, attendanceMap, leaveMap, holidaySet);
+      if (s.type === 'present')       present++;
+      else if (s.type === 'absent')   absent++;
+      else if (s.type === 'leave')    leave++;
+      else if (s.type === 'holiday')  holidays++;
     }
     const workdays = present + absent + leave;
     const pct = workdays > 0 ? Math.round(present / workdays * 100) : null;
-    return { present, absent, leave, pct };
-  }, [year, month, attendanceMap, leaveMap]);
+    return { present, absent, leave, holidays, pct };
+  }, [year, month, attendanceMap, leaveMap, holidaySet]);
 
   const statusColor = (type) => {
     if (type === 'present') return g.mint;
     if (type === 'absent')  return '#ff453a';
     if (type === 'leave')   return '#8b7cff';
+    if (type === 'holiday') return '#ffb347';
     if (type === 'weekend') return g.textDim;
     if (type === 'future')  return 'transparent';
     return 'transparent';
@@ -156,8 +166,12 @@ export default function AttendanceCalendarScreen({ navigation }) {
   const handleDayPress = (d) => {
     if (!d) return;
     const ds = `${year}-${pad2(month + 1)}-${pad2(d)}`;
-    const status = dayStatus(ds, attendanceMap, leaveMap);
+    const status = dayStatus(ds, attendanceMap, leaveMap, holidaySet);
     if (status.type === 'future' || status.type === 'weekend') return;
+    if (status.type === 'holiday') {
+      setSelectedDay({ dateStr: ds, type: 'holiday', data: { name: holidayNames[ds] || 'Holiday' } });
+      return;
+    }
     setSelectedDay({ dateStr: ds, ...status });
   };
 
@@ -203,6 +217,11 @@ export default function AttendanceCalendarScreen({ navigation }) {
             </View>
             <View style={[s.summaryDivider, { backgroundColor: g.border }]} />
             <View style={s.summaryItem}>
+              <Text style={[s.summaryNum, { color: '#ffb347' }]}>{summary.holidays || 0}</Text>
+              <Text style={[s.summaryLbl, { color: g.textMuted }]}>Holidays</Text>
+            </View>
+            <View style={[s.summaryDivider, { backgroundColor: g.border }]} />
+            <View style={s.summaryItem}>
               <Text style={[s.summaryNum, { color: summary.pct >= 80 ? g.mint : summary.pct >= 60 ? '#ffb347' : '#ff453a' }]}>
                 {summary.pct !== null ? `${summary.pct}%` : '--'}
               </Text>
@@ -227,7 +246,7 @@ export default function AttendanceCalendarScreen({ navigation }) {
                 {week.map((d, di) => {
                   if (!d) return <View key={di} style={s.dayCellEmpty} />;
                   const ds = `${year}-${pad2(month + 1)}-${pad2(d)}`;
-                  const st = dayStatus(ds, attendanceMap, leaveMap);
+                  const st = dayStatus(ds, attendanceMap, leaveMap, holidaySet);
                   const color = statusColor(st.type);
                   const todayCell = isToday(d);
                   const isWeekend = di === 0 || di === 6;
@@ -261,6 +280,7 @@ export default function AttendanceCalendarScreen({ navigation }) {
               { type: 'present', label: 'Present' },
               { type: 'absent',  label: 'Absent' },
               { type: 'leave',   label: 'On Leave' },
+              { type: 'holiday', label: 'Holiday' },
             ].map((l) => (
               <View key={l.type} style={s.legendItem}>
                 <View style={[s.legendDot, { backgroundColor: statusColor(l.type) }]} />
@@ -313,6 +333,15 @@ export default function AttendanceCalendarScreen({ navigation }) {
                 )}
               </LinearGradient>
             ))}
+
+            {selectedDay?.type === 'holiday' && (
+              <View style={[s.sessionCard, { borderColor: '#ffb34755', backgroundColor: 'rgba(255,179,71,0.08)' }]}>
+                <Text style={{ color: '#ffb347', fontWeight: '900', fontSize: 16, marginBottom: 4 }}>
+                  🎉 {selectedDay.data?.name || 'Holiday'}
+                </Text>
+                <Text style={{ color: g.textMuted, fontSize: 13 }}>Public holiday — not counted as absent</Text>
+              </View>
+            )}
 
             {selectedDay?.type === 'absent' && (
               <View style={[s.sessionCard, { borderColor: '#ff453a33', backgroundColor: 'rgba(255,69,58,0.05)' }]}>

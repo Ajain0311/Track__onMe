@@ -1,6 +1,7 @@
 // services/analyticsService.js — Personal + org-wide workforce analytics
 
 const { supabase } = require('./supabase');
+const { getHolidaysForYear, buildHolidaySet } = require('./holidayService');
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const toDateStr = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
@@ -12,6 +13,9 @@ const isWeekday = (dateStr) => {
   const dow = d.getDay();
   return dow !== 0 && dow !== 6;
 };
+
+const isWorkday = (dateStr, holidaySet) =>
+  isWeekday(dateStr) && !holidaySet.has(dateStr);
 
 const buildDateRange = (startDate, endDate) => {
   const dates = [];
@@ -47,16 +51,21 @@ const getPersonalAnalytics = async (userId) => {
     lastMonthDate.getFullYear(), lastMonthDate.getMonth()
   );
 
-  // Fetch all attendance for this year (cap at 500 for performance)
-  const { data: sessions, error } = await supabase
-    .from('attendance')
-    .select('id, check_in_time, check_out_time, total_duration, date, location_name')
-    .eq('user_id', userId)
-    .gte('check_in_time', `${year}-01-01T00:00:00`)
-    .order('check_in_time', { ascending: false })
-    .limit(500);
+  // Fetch attendance and holidays in parallel
+  const [sessionRes, holidays] = await Promise.all([
+    supabase
+      .from('attendance')
+      .select('id, check_in_time, check_out_time, total_duration, date, location_name')
+      .eq('user_id', userId)
+      .gte('check_in_time', `${year}-01-01T00:00:00`)
+      .order('check_in_time', { ascending: false })
+      .limit(500),
+    getHolidaysForYear(year).catch(() => []),
+  ]);
 
+  const { data: sessions, error } = sessionRes;
   if (error) throw new Error(error.message);
+  const holidaySet = buildHolidaySet(holidays);
 
   // Build set of present days
   const presentDays = new Set(
@@ -65,11 +74,11 @@ const getPersonalAnalytics = async (userId) => {
 
   const todayStr = toDateStr(now);
 
-  // Helper: compute rate for a date range
+  // Helper: compute rate for a date range (excludes weekends + holidays)
   const computeRate = (first, last) => {
     const capDate = todayStr < last ? todayStr : last;
     const dates = buildDateRange(first, capDate);
-    const workdays = dates.filter(isWeekday);
+    const workdays = dates.filter((d) => isWorkday(d, holidaySet));
     if (workdays.length === 0) return { present: 0, workdays: 0, rate: null };
     const present = workdays.filter((d) => presentDays.has(d)).length;
     return { present, workdays: workdays.length, rate: Math.round((present / workdays.length) * 100) };
@@ -94,6 +103,7 @@ const getPersonalAnalytics = async (userId) => {
       totalSecs,
       totalHours: Math.round(totalSecs / 3600 * 10) / 10,
       isWeekend: !isWeekday(ds),
+      isHoliday: holidaySet.has(ds),
       isFuture: ds > todayStr,
     });
   }
@@ -105,7 +115,7 @@ const getPersonalAnalytics = async (userId) => {
 
   // Year stats
   const yearDates = buildDateRange(`${year}-01-01`, todayStr);
-  const yearWorkdays = yearDates.filter(isWeekday);
+  const yearWorkdays = yearDates.filter((d) => isWorkday(d, holidaySet));
   const yearPresent = yearWorkdays.filter((d) => presentDays.has(d)).length;
 
   return {
@@ -135,8 +145,10 @@ const getOrgAnalytics = async (days = 30) => {
   startDate.setDate(startDate.getDate() - (days - 1));
   const startStr = toDateStr(startDate);
 
-  // Fetch recent attendance
-  const [attendanceRes, usersRes, deptRes] = await Promise.all([
+  const year = now.getFullYear();
+
+  // Fetch recent attendance, users, profiles, and holidays in parallel
+  const [attendanceRes, usersRes, deptRes, holidays] = await Promise.all([
     supabase
       .from('attendance')
       .select('user_id, check_in_time, total_duration, date')
@@ -146,6 +158,7 @@ const getOrgAnalytics = async (days = 30) => {
     supabase
       .from('employee_profiles')
       .select('user_id, department_id, departments(id, name, color)'),
+    getHolidaysForYear(year).catch(() => []),
   ]);
 
   if (attendanceRes.error) throw new Error(attendanceRes.error.message);
@@ -153,6 +166,7 @@ const getOrgAnalytics = async (days = 30) => {
   const totalUsers = (usersRes.data?.users || []).length || 1;
   const sessions = attendanceRes.data || [];
   const profiles = deptRes.data || [];
+  const holidaySet = buildHolidaySet(holidays);
 
   // Daily attendance rates
   const dateRange = buildDateRange(startStr, todayStr);
@@ -170,6 +184,7 @@ const getOrgAnalytics = async (days = 30) => {
     total: totalUsers,
     rate: Math.round(((dailyMap[d]?.size || 0) / totalUsers) * 100),
     isWeekend: !isWeekday(d),
+    isHoliday: holidaySet.has(d),
   }));
 
   // Department breakdown for today (and this week)
@@ -215,9 +230,9 @@ const getOrgAnalytics = async (days = 30) => {
 
   // Top 7 days by presence (for insights)
   const todayStats = dailyRates.find((d) => d.date === todayStr) || { present: 0, rate: 0 };
-  const weekdays  = dailyRates.filter((d) => !d.isWeekend);
-  const avgRate   = weekdays.length > 0
-    ? Math.round(weekdays.reduce((s, d) => s + d.rate, 0) / weekdays.length)
+  const realWorkdays = dailyRates.filter((d) => !d.isWeekend && !d.isHoliday);
+  const avgRate = realWorkdays.length > 0
+    ? Math.round(realWorkdays.reduce((s, d) => s + d.rate, 0) / realWorkdays.length)
     : 0;
 
   // User-level summary for top performers (last 30 days)

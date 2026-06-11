@@ -35,6 +35,7 @@ import AdminCorrectionsScreen from './screens/admin/AdminCorrectionsScreen';
 import AdminDepartmentsScreen from './screens/admin/AdminDepartmentsScreen';
 import AdminReportsScreen from './screens/admin/AdminReportsScreen';
 import AdminAnalyticsScreen from './screens/admin/AdminAnalyticsScreen';
+import AdminHolidaysScreen from './screens/admin/AdminHolidaysScreen';
 import EditProfileScreen from './screens/EditProfileScreen';
 import LeaveBalanceScreen from './screens/LeaveBalanceScreen';
 import EmployeeDirectoryScreen from './screens/EmployeeDirectoryScreen';
@@ -316,6 +317,7 @@ export default function App() {
                 <Stack.Screen name="AdminDepartments" component={AdminDepartmentsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminReports" component={AdminReportsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminAnalytics" component={AdminAnalyticsScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AdminHolidays" component={AdminHolidaysScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="LeaveBalance" component={LeaveBalanceScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="EmployeeDirectory" component={EmployeeDirectoryScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AttendanceCalendar" component={AttendanceCalendarScreen} options={{ animation: 'slide_from_right' }} />

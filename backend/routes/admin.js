@@ -32,6 +32,10 @@ const {
   adminListProfiles, adminSetUserDepartment,
 } = require('../controllers/departmentController');
 const { getAdminAnalytics } = require('../controllers/analyticsController');
+const {
+  adminListHolidays, adminCreateHoliday,
+  adminUpdateHoliday, adminDeleteHoliday,
+} = require('../controllers/holidayController');
 
 // All admin routes require authentication + admin (or manager / super_admin) role
 router.use(verifyToken, requireRole(['admin', 'manager']));
@@ -140,5 +144,11 @@ router.get('/audit-logs', listAuditLogs);
 
 // ─── Analytics ────────────────────────────────────────────────────────────────
 router.get('/analytics', getAdminAnalytics);
+
+// ─── Holidays ─────────────────────────────────────────────────────────────────
+router.get('/holidays',      adminListHolidays);
+router.post('/holidays',     adminCreateHoliday);
+router.put('/holidays/:id',  adminUpdateHoliday);
+router.delete('/holidays/:id', adminDeleteHoliday);
 
 module.exports = router;
