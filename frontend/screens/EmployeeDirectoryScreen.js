@@ -173,7 +173,7 @@ export default function EmployeeDirectoryScreen({ navigation }) {
               deptColor={item.departmentColor}
               g={g}
               grad={grad}
-              onPress={() => {}} // future: navigate to employee detail
+              onPress={() => navigation.navigate('AdminEmployeeDetail', { profile: item })}
             />
           )}
           ListFooterComponent={
