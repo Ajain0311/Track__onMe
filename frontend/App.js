@@ -42,6 +42,7 @@ import AdminShiftsScreen from './screens/admin/AdminShiftsScreen';
 import AdminAbsenteeismScreen from './screens/admin/AdminAbsenteeismScreen';
 import AdminDesignationsScreen from './screens/admin/AdminDesignationsScreen';
 import AdminAnomaliesScreen from './screens/admin/AdminAnomaliesScreen';
+import AdminLeaveAnalyticsScreen from './screens/admin/AdminLeaveAnalyticsScreen';
 import EditProfileScreen from './screens/EditProfileScreen';
 import LeaveBalanceScreen from './screens/LeaveBalanceScreen';
 import EmployeeDirectoryScreen from './screens/EmployeeDirectoryScreen';
@@ -330,6 +331,7 @@ export default function App() {
                 <Stack.Screen name="AdminAbsenteeism" component={AdminAbsenteeismScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminDesignations" component={AdminDesignationsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminAnomalies" component={AdminAnomaliesScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AdminLeaveAnalytics" component={AdminLeaveAnalyticsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="LeaveBalance" component={LeaveBalanceScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="EmployeeDirectory" component={EmployeeDirectoryScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AttendanceCalendar" component={AttendanceCalendarScreen} options={{ animation: 'slide_from_right' }} />

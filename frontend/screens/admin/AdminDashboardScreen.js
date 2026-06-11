@@ -269,6 +269,22 @@ export default function AdminDashboardScreen({ navigation }) {
               </View>
             </TouchableOpacity>
 
+            {/* Leave Analytics */}
+            <TouchableOpacity
+              style={[st.requestsCard, { backgroundColor: 'rgba(62,232,199,0.08)', borderColor: 'rgba(62,232,199,0.35)' }]}
+              onPress={() => navigation.navigate('AdminLeaveAnalytics')}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text style={{ fontSize: 28 }}>🌴</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[st.actionLabel, { color: g.text }]}>Leave Analytics</Text>
+                  <Text style={[st.actionSub, { color: g.textMuted }]}>Trends, type & dept breakdown</Text>
+                </View>
+                <Text style={{ color: g.textDim, fontSize: 20 }}>›</Text>
+              </View>
+            </TouchableOpacity>
+
             {/* Workforce Analytics */}
             <TouchableOpacity
               style={[st.requestsCard, { backgroundColor: 'rgba(62,232,199,0.08)', borderColor: 'rgba(62,232,199,0.35)' }]}
