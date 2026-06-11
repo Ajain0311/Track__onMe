@@ -63,6 +63,9 @@ export function getApiErrorMessage(error) {
   if (msg.includes('Not signed in')) return msg;
   if (error?.response?.status === 401) return 'Session expired. Sign out and sign in again.';
   if (error?.response?.status === 403) return error?.response?.data?.error || 'You don\'t have permission to do that.';
+  // Frontend deployed ahead of the backend — endpoint doesn't exist yet
+  if (error?.response?.status === 404 && /route not found/i.test(error?.response?.data?.error || ''))
+    return 'This feature is waiting on a server update — try again in a few minutes.';
   if (error?.code === 'ECONNABORTED' || msg.toLowerCase().includes('timeout'))
     return 'Request timed out. The server may be waking up — try again in a moment.';
   if (error?.response?.data?.error) return String(error.response.data.error);

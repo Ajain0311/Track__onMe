@@ -28,6 +28,7 @@ export const signUp = async (email, password, displayName) => {
     body: JSON.stringify({ email, password, displayName }),
   });
   const body = await res.json().catch(() => ({}));
+  if (res.status === 404) throw new Error('Sign-up is waiting on a server update — try again in a few minutes.');
   if (!res.ok) throw new Error(body?.error || 'Sign-up failed. Please try again.');
   return signIn(email, password);
 };
