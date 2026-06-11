@@ -153,6 +153,11 @@ export const getReportCsvUrl = (type, params = {}) => {
   return `${BASE_URL}/admin/reports/${type}/csv?${qs}`;
 };
 
+export const getReportPdfUrl = (type, params = {}) => {
+  const qs = new URLSearchParams({ ...params }).toString();
+  return `${BASE_URL}/admin/reports/${type}/pdf?${qs}`;
+};
+
 // ─── Location Requests (admin) ────────────────────────────────────────────────
 
 export const adminGetLocationRequests    = (status = 'pending') =>

@@ -10,7 +10,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import useThemeStore from '../../store/themeStore';
 import {
   adminGetAttendanceReport, adminGetLeaveReport,
-  getReportCsvUrl, getApiErrorMessage,
+  getReportCsvUrl, getReportPdfUrl, getApiErrorMessage,
 } from '../../services/api';
 import { supabase } from '../../services/supabaseConfig';
 import { useToast } from '../../components/ToastProvider';
@@ -162,6 +162,7 @@ export default function AdminReportsScreen({ navigation }) {
   const [endDate, setEndDate]     = useState(today);
   const [loading, setLoading]     = useState(false);
   const [csvLoading, setCsvLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
 
   const [attendanceSummary, setAttendanceSummary] = useState(null);
   const [leaveRecords, setLeaveRecords]           = useState(null);
@@ -226,6 +227,36 @@ export default function AdminReportsScreen({ navigation }) {
     }
   };
 
+  const handleExportPdf = async () => {
+    setPdfLoading(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token;
+      if (!token) { toast.error('Not signed in.'); return; }
+
+      const pdfType = activeTab === 'attendance' ? 'attendance' : 'leaves';
+      const url = getReportPdfUrl(pdfType, { startDate, endDate });
+
+      if (Platform.OS === 'web') {
+        // Open in new tab — browser print dialog fires automatically
+        const dlUrl = `${url}&token=${token}`;
+        window.open(dlUrl, '_blank');
+      } else {
+        const dlUrl = `${url}&token=${token}`;
+        const supported = await Linking.canOpenURL(dlUrl);
+        if (supported) {
+          await Linking.openURL(dlUrl);
+        } else {
+          toast.error('Cannot open PDF on this device.');
+        }
+      }
+    } catch (e) {
+      toast.error(getApiErrorMessage(e));
+    } finally {
+      setPdfLoading(false);
+    }
+  };
+
   const tabs = [
     { key: 'attendance', label: 'Attendance', icon: '📋' },
     { key: 'leaves',     label: 'Leaves',     icon: '🌴' },
@@ -270,13 +301,22 @@ export default function AdminReportsScreen({ navigation }) {
               </LinearGradient>
             </TouchableOpacity>
             {(attendanceSummary !== null || leaveRecords !== null) && (
-              <TouchableOpacity
-                style={[s.csvBtn, { borderColor: g.mint, backgroundColor: 'rgba(62,232,199,0.1)', opacity: csvLoading ? 0.7 : 1 }]}
-                onPress={handleExportCsv}
-                disabled={csvLoading}
-              >
-                {csvLoading ? <ActivityIndicator color={g.mint} size="small" /> : <Text style={[s.csvTxt, { color: g.mint }]}>↓ Export CSV</Text>}
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  style={[s.csvBtn, { borderColor: g.mint, backgroundColor: 'rgba(62,232,199,0.1)', opacity: csvLoading ? 0.7 : 1 }]}
+                  onPress={handleExportCsv}
+                  disabled={csvLoading}
+                >
+                  {csvLoading ? <ActivityIndicator color={g.mint} size="small" /> : <Text style={[s.csvTxt, { color: g.mint }]}>↓ CSV</Text>}
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[s.csvBtn, { borderColor: '#8b7cff', backgroundColor: 'rgba(139,124,255,0.1)', opacity: pdfLoading ? 0.7 : 1 }]}
+                  onPress={handleExportPdf}
+                  disabled={pdfLoading}
+                >
+                  {pdfLoading ? <ActivityIndicator color="#8b7cff" size="small" /> : <Text style={[s.csvTxt, { color: '#8b7cff' }]}>🖨️ PDF</Text>}
+                </TouchableOpacity>
+              </>
             )}
           </View>
         </LinearGradient>
