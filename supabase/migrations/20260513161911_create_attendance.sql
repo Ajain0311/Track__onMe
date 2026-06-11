@@ -29,14 +29,17 @@ CREATE INDEX IF NOT EXISTS idx_attendance_user_active
 
 ALTER TABLE public.attendance ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own attendance" ON public.attendance;
 CREATE POLICY "Users can view own attendance"
   ON public.attendance FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own attendance" ON public.attendance;
 CREATE POLICY "Users can insert own attendance"
   ON public.attendance FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own attendance" ON public.attendance;
 CREATE POLICY "Users can update own attendance"
   ON public.attendance FOR UPDATE
   USING (auth.uid() = user_id);

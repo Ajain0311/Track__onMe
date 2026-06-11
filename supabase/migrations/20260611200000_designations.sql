@@ -12,10 +12,12 @@ CREATE TABLE IF NOT EXISTS designations (
 ALTER TABLE designations ENABLE ROW LEVEL SECURITY;
 
 -- All authenticated users can read active designations
+DROP POLICY IF EXISTS "designations_read" ON designations;
 CREATE POLICY "designations_read" ON designations
   FOR SELECT TO authenticated USING (true);
 
 -- Admin-only write
+DROP POLICY IF EXISTS "designations_admin_write" ON designations;
 CREATE POLICY "designations_admin_write" ON designations
   FOR ALL TO authenticated
   USING (

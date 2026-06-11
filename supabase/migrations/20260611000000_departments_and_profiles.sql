@@ -20,6 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_departments_active ON public.departments (is_acti
 ALTER TABLE public.departments ENABLE ROW LEVEL SECURITY;
 
 -- All authenticated users can view active departments (for profile editing)
+DROP POLICY IF EXISTS "Authenticated users can view departments" ON public.departments;
 CREATE POLICY "Authenticated users can view departments"
   ON public.departments FOR SELECT
   USING (auth.uid() IS NOT NULL);
@@ -58,15 +59,18 @@ CREATE TRIGGER trg_profiles_updated_at
 ALTER TABLE public.employee_profiles ENABLE ROW LEVEL SECURITY;
 
 -- Users can view their own profile
+DROP POLICY IF EXISTS "Users can view own profile" ON public.employee_profiles;
 CREATE POLICY "Users can view own profile"
   ON public.employee_profiles FOR SELECT
   USING (auth.uid() = user_id);
 
 -- Users can insert/update their own profile
+DROP POLICY IF EXISTS "Users can upsert own profile" ON public.employee_profiles;
 CREATE POLICY "Users can upsert own profile"
   ON public.employee_profiles FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can update own profile" ON public.employee_profiles;
 CREATE POLICY "Users can update own profile"
   ON public.employee_profiles FOR UPDATE
   USING (auth.uid() = user_id);

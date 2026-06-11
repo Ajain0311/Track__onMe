@@ -30,10 +30,12 @@ ALTER TABLE shifts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE employee_shifts ENABLE ROW LEVEL SECURITY;
 
 -- All authenticated users can read active shifts
+DROP POLICY IF EXISTS "shifts_read" ON shifts;
 CREATE POLICY "shifts_read" ON shifts
   FOR SELECT TO authenticated USING (is_active = true OR true);
 
 -- Admin-only write
+DROP POLICY IF EXISTS "shifts_admin_write" ON shifts;
 CREATE POLICY "shifts_admin_write" ON shifts
   FOR ALL TO authenticated
   USING (
@@ -41,6 +43,7 @@ CREATE POLICY "shifts_admin_write" ON shifts
   );
 
 -- Employees can read their own assignment; admins can read all
+DROP POLICY IF EXISTS "emp_shifts_read" ON employee_shifts;
 CREATE POLICY "emp_shifts_read" ON employee_shifts
   FOR SELECT TO authenticated
   USING (
@@ -48,6 +51,7 @@ CREATE POLICY "emp_shifts_read" ON employee_shifts
     OR EXISTS (SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role IN ('admin','manager'))
   );
 
+DROP POLICY IF EXISTS "emp_shifts_admin_write" ON employee_shifts;
 CREATE POLICY "emp_shifts_admin_write" ON employee_shifts
   FOR ALL TO authenticated
   USING (

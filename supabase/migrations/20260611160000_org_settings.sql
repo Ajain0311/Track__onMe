@@ -10,12 +10,14 @@ CREATE TABLE IF NOT EXISTS org_settings (
 ALTER TABLE org_settings ENABLE ROW LEVEL SECURITY;
 
 -- Admins can read and write
+DROP POLICY IF EXISTS "org_settings_admin_all" ON org_settings;
 CREATE POLICY "org_settings_admin_all" ON org_settings
   FOR ALL USING (
     EXISTS (SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role IN ('admin', 'super_admin'))
   );
 
 -- All authenticated users can read settings (needed for punctuality threshold etc.)
+DROP POLICY IF EXISTS "org_settings_user_read" ON org_settings;
 CREATE POLICY "org_settings_user_read" ON org_settings
   FOR SELECT USING (auth.uid() IS NOT NULL);
 

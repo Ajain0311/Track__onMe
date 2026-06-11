@@ -24,6 +24,7 @@ ON CONFLICT (name) DO NOTHING;
 
 ALTER TABLE public.leave_types ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Anyone authenticated can view active leave types" ON public.leave_types;
 CREATE POLICY "Anyone authenticated can view active leave types"
   ON public.leave_types FOR SELECT
   USING (auth.uid() IS NOT NULL AND is_active = true);
@@ -72,14 +73,17 @@ CREATE TRIGGER trg_leaves_updated_at
 
 ALTER TABLE public.leaves ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own leaves" ON public.leaves;
 CREATE POLICY "Users can view own leaves"
   ON public.leaves FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own leaves" ON public.leaves;
 CREATE POLICY "Users can insert own leaves"
   ON public.leaves FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can cancel own pending leaves" ON public.leaves;
 CREATE POLICY "Users can cancel own pending leaves"
   ON public.leaves FOR UPDATE
   USING (auth.uid() = user_id AND status = 'pending');

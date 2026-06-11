@@ -39,14 +39,17 @@ CREATE TRIGGER trg_corrections_updated_at
 
 ALTER TABLE public.attendance_corrections ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Users can view own corrections" ON public.attendance_corrections;
 CREATE POLICY "Users can view own corrections"
   ON public.attendance_corrections FOR SELECT
   USING (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can insert own corrections" ON public.attendance_corrections;
 CREATE POLICY "Users can insert own corrections"
   ON public.attendance_corrections FOR INSERT
   WITH CHECK (auth.uid() = user_id);
 
+DROP POLICY IF EXISTS "Users can cancel own pending corrections" ON public.attendance_corrections;
 CREATE POLICY "Users can cancel own pending corrections"
   ON public.attendance_corrections FOR UPDATE
   USING (auth.uid() = user_id AND status = 'pending');

@@ -14,10 +14,12 @@ CREATE TABLE IF NOT EXISTS holidays (
 ALTER TABLE holidays ENABLE ROW LEVEL SECURITY;
 
 -- All authenticated users can read active holidays
+DROP POLICY IF EXISTS "holidays_read_authenticated" ON holidays;
 CREATE POLICY "holidays_read_authenticated" ON holidays
   FOR SELECT USING (auth.uid() IS NOT NULL AND is_active = true);
 
 -- Only admins can insert / update / delete
+DROP POLICY IF EXISTS "holidays_admin_write" ON holidays;
 CREATE POLICY "holidays_admin_write" ON holidays
   FOR ALL USING (
     EXISTS (SELECT 1 FROM user_roles WHERE user_id = auth.uid() AND role = 'admin')

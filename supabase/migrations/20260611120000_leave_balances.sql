@@ -31,6 +31,7 @@ CREATE INDEX IF NOT EXISTS idx_leave_allowances_user_year
 ALTER TABLE public.leave_allowances ENABLE ROW LEVEL SECURITY;
 
 -- Users can read their own allowances; admins can read/write all
+DROP POLICY IF EXISTS "Users can view own leave allowances" ON public.leave_allowances;
 CREATE POLICY "Users can view own leave allowances"
   ON public.leave_allowances FOR SELECT
   USING (auth.uid() = user_id);
