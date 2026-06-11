@@ -237,6 +237,22 @@ export default function AdminDashboardScreen({ navigation }) {
               </View>
             </TouchableOpacity>
 
+            {/* Anomaly Detection */}
+            <TouchableOpacity
+              style={[st.requestsCard, { backgroundColor: 'rgba(229,83,75,0.06)', borderColor: 'rgba(229,83,75,0.3)' }]}
+              onPress={() => navigation.navigate('AdminAnomalies')}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text style={{ fontSize: 28 }}>🔍</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[st.actionLabel, { color: g.text }]}>Anomaly Detection</Text>
+                  <Text style={[st.actionSub, { color: g.textMuted }]}>Unusual check-in patterns & timing</Text>
+                </View>
+                <Text style={{ color: g.textDim, fontSize: 20 }}>›</Text>
+              </View>
+            </TouchableOpacity>
+
             {/* Absenteeism Report */}
             <TouchableOpacity
               style={[st.requestsCard, { backgroundColor: 'rgba(229,83,75,0.08)', borderColor: 'rgba(229,83,75,0.35)' }]}

@@ -46,6 +46,7 @@ const {
   listAll: listAllDesignations, create: createDesignation,
   update: updateDesignation, remove: removeDesignation,
 } = require('../controllers/designationController');
+const { getAnomalies } = require('../controllers/anomalyController');
 
 // All admin routes require authentication + admin (or manager / super_admin) role
 router.use(verifyToken, requireRole(['admin', 'manager']));
@@ -156,6 +157,7 @@ router.get('/audit-logs', listAuditLogs);
 router.get('/analytics',    getAdminAnalytics);
 router.get('/punctuality',  getAdminPunctuality);
 router.get('/absenteeism',  getAbsenteeism);
+router.get('/anomalies',    getAnomalies);
 
 // ─── Org Settings ─────────────────────────────────────────────────────────────
 router.get('/settings',     getOrgSettings);
