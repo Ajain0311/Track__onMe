@@ -19,6 +19,7 @@ import { validateWifiConnection, getAllowedWifiName } from '../services/wifiServ
 import { validateAttendanceLocation } from '../services/locationService';
 import { hasFaceData } from '../services/faceRecognitionService';
 import { getFaceStatusFromServer } from '../services/api';
+import OnboardingCard from '../components/OnboardingCard';
 
 const triggerHaptic = (type = 'light') => {
   if (Platform.OS === 'web') return;
@@ -78,6 +79,7 @@ export default function DashboardScreen({ navigation }) {
   const [clockTime, setClockTime] = useState(new Date());
   const [unreadCount, setUnreadCount] = useState(0);
   const [displayName, setDisplayName] = useState(null);
+  const [onboardingSteps, setOnboardingSteps] = useState(null);
 
   const timerRef = useRef(null);
   const clockRef = useRef(null);
@@ -150,16 +152,25 @@ export default function DashboardScreen({ navigation }) {
         hasFaceData(user.id).then(setFaceRegistered);
         // Also check server — this is the authoritative source
         getFaceStatusFromServer()
-          .then((r) => setFaceRegisteredOnServer(!!r.data?.registered))
+          .then((r) => {
+            const reg = !!r.data?.registered;
+            setFaceRegisteredOnServer(reg);
+            setOnboardingSteps((prev) => ({ ...(prev || {}), face: reg }));
+          })
           .catch(() => {}); // fail-soft — don't block the dashboard
       }
       // Silently refresh status so the timer & button states stay accurate
       // without resetting the loading skeleton every time.
       fetchStatus({ silent: true });
 
-      // Load display name from profile (best-effort, cached after first load)
+      // Load display name + onboarding state from profile
       getMe()
-        .then((r) => { if (r.data?.profile?.displayName) setDisplayName(r.data.profile.displayName); })
+        .then((r) => {
+          if (r.data?.profile?.displayName) setDisplayName(r.data.profile.displayName);
+          // Onboarding: check profile has a displayName set (non-empty)
+          const profileDone = !!(r.data?.profile?.displayName);
+          setOnboardingSteps((prev) => ({ ...(prev || {}), profile: profileDone }));
+        })
         .catch(() => {});
 
       // Best-effort unread notification count, also re-polled every 60s
@@ -184,7 +195,11 @@ export default function DashboardScreen({ navigation }) {
     if (user?.id) {
         hasFaceData(user.id).then(setFaceRegistered);
         getFaceStatusFromServer()
-          .then((r) => setFaceRegisteredOnServer(!!r.data?.registered))
+          .then((r) => {
+            const reg = !!r.data?.registered;
+            setFaceRegisteredOnServer(reg);
+            setOnboardingSteps((prev) => ({ ...(prev || {}), face: reg }));
+          })
           .catch(() => {});
       }
   }, []);
@@ -321,6 +336,11 @@ export default function DashboardScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         ) : null}
+
+        {/* ── Onboarding checklist (shown until all steps complete) ── */}
+        {onboardingSteps && (!onboardingSteps.profile || !onboardingSteps.face) && (
+          <OnboardingCard steps={onboardingSteps} navigation={navigation} />
+        )}
 
         {/* ── Header row ── */}
         <View style={s.topRow}>
