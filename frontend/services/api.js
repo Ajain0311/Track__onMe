@@ -213,6 +213,11 @@ export const adminGetUserLeaveBalance = (userId, year) =>
 
 // ─── Analytics ───────────────────────────────────────────────────────────────
 
+// ─── Org Settings ────────────────────────────────────────────────────────────
+
+export const getOrgSettings    = () => api.get('/admin/settings');
+export const updateOrgSettings = (settings) => api.put('/admin/settings', settings);
+
 export const getPersonalAnalytics  = () => api.get('/analytics/summary');
 export const getPersonalPunctuality = (months = 3) => api.get('/analytics/punctuality', { params: { months } });
 export const adminGetAnalytics     = (days = 30) => api.get('/admin/analytics', { params: { days } });

@@ -2,37 +2,32 @@
 
 const { supabase } = require('./supabase');
 const { getHolidaysForYear, buildHolidaySet } = require('./holidayService');
+const { getPunctualityConfig } = require('./orgSettingsService');
 
 const pad2 = (n) => String(n).padStart(2, '0');
 const toDateStr = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 const isWeekday = (ds) => { const dow = new Date(ds + 'T00:00:00').getDay(); return dow !== 0 && dow !== 6; };
-
-// Expected start time — currently 09:00 local. Could be made per-shift in the future.
-const LATE_THRESHOLD_HOUR = 9;    // 09:xx local
-const LATE_THRESHOLD_MIN  = 15;   // grace: 09:15
-const EARLY_CHECKOUT_HOUR = 17;   // leaving before 17:00 = early departure
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 const getLocalHour = (isoStr) => new Date(isoStr).getHours();
 const getLocalMin  = (isoStr) => new Date(isoStr).getMinutes();
 
-const isLate = (checkInIso) => {
+const makeIsLate = (cfg) => (checkInIso) => {
   const h = getLocalHour(checkInIso), m = getLocalMin(checkInIso);
-  return h > LATE_THRESHOLD_HOUR || (h === LATE_THRESHOLD_HOUR && m > LATE_THRESHOLD_MIN);
+  return h > cfg.lateHour || (h === cfg.lateHour && m > cfg.lateMin);
 };
 
-const minsLate = (checkInIso) => {
+const makeMinsLate = (cfg) => (checkInIso) => {
   const h = getLocalHour(checkInIso), m = getLocalMin(checkInIso);
   const totalMin = h * 60 + m;
-  const threshold = LATE_THRESHOLD_HOUR * 60 + LATE_THRESHOLD_MIN;
+  const threshold = cfg.lateHour * 60 + cfg.lateMin;
   return Math.max(0, totalMin - threshold);
 };
 
-const isEarlyCheckout = (checkOutIso) => {
+const makeIsEarlyCheckout = (cfg) => (checkOutIso) => {
   if (!checkOutIso) return false;
-  const h = getLocalHour(checkOutIso);
-  return h < EARLY_CHECKOUT_HOUR;
+  return getLocalHour(checkOutIso) < cfg.earlyCheckoutHour;
 };
 
 // ── Personal Punctuality ────────────────────────────────────────────────────────
@@ -43,16 +38,23 @@ const getPersonalPunctuality = async (userId, months = 3) => {
   startDate.setMonth(startDate.getMonth() - months);
   const startStr = toDateStr(startDate);
 
-  const { data: sessions, error } = await supabase
-    .from('attendance')
-    .select('check_in_time, check_out_time, total_duration, date')
-    .eq('user_id', userId)
-    .gte('check_in_time', `${startStr}T00:00:00`)
-    .order('check_in_time', { ascending: false });
+  const [sessionRes, cfg] = await Promise.all([
+    supabase
+      .from('attendance')
+      .select('check_in_time, check_out_time, total_duration, date')
+      .eq('user_id', userId)
+      .gte('check_in_time', `${startStr}T00:00:00`)
+      .order('check_in_time', { ascending: false }),
+    getPunctualityConfig(),
+  ]);
 
-  if (error) throw new Error(error.message);
+  if (sessionRes.error) throw new Error(sessionRes.error.message);
 
-  const s = sessions || [];
+  const isLate           = makeIsLate(cfg);
+  const minsLate         = makeMinsLate(cfg);
+  const isEarlyCheckout  = makeIsEarlyCheckout(cfg);
+
+  const s = sessionRes.data || [];
   let lateCount = 0, onTimeCount = 0, earlyCheckoutCount = 0;
   let totalLateMinutes = 0;
   const lateDays = [];
@@ -79,15 +81,12 @@ const getPersonalPunctuality = async (userId, months = 3) => {
   const total = s.length;
   const punctualityRate = total > 0 ? Math.round((onTimeCount / total) * 100) : null;
   const avgLateMinutes  = lateCount > 0 ? Math.round(totalLateMinutes / lateCount) : 0;
+  const lateThreshold   = `${pad2(cfg.lateHour)}:${pad2(cfg.lateMin)}`;
 
   return {
-    punctualityRate,
-    onTimeCount,
-    lateCount,
-    earlyCheckoutCount,
-    avgLateMinutes,
-    totalSessions: total,
-    recentLate: lateDays.slice(0, 5),
+    punctualityRate, onTimeCount, lateCount,
+    earlyCheckoutCount, avgLateMinutes,
+    totalSessions: total, recentLate: lateDays.slice(0, 5), lateThreshold,
   };
 };
 
@@ -100,7 +99,7 @@ const getOrgPunctuality = async (days = 30) => {
   startDate.setDate(startDate.getDate() - (days - 1));
   const startStr = toDateStr(startDate);
 
-  const [sessRes, usersRes, holidayRes] = await Promise.all([
+  const [sessRes, usersRes, holidayRes, cfg] = await Promise.all([
     supabase
       .from('attendance')
       .select('user_id, check_in_time, check_out_time, total_duration, date')
@@ -108,9 +107,13 @@ const getOrgPunctuality = async (days = 30) => {
       .order('check_in_time', { ascending: true }),
     supabase.auth.admin.listUsers({ perPage: 1000 }),
     getHolidaysForYear(now.getFullYear()).catch(() => []),
+    getPunctualityConfig(),
   ]);
 
   if (sessRes.error) throw new Error(sessRes.error.message);
+
+  const isLate          = makeIsLate(cfg);
+  const isEarlyCheckout = makeIsEarlyCheckout(cfg);
 
   const sessions = sessRes.data || [];
   const totalUsers = (usersRes.data?.users || []).length || 1;
@@ -186,7 +189,7 @@ const getOrgPunctuality = async (days = 30) => {
       totalLate,
       totalOnTime: totalSessions - totalLate,
       totalSessions,
-      lateThreshold: `${pad2(LATE_THRESHOLD_HOUR)}:${pad2(LATE_THRESHOLD_MIN)}`,
+      lateThreshold: `${pad2(cfg.lateHour)}:${pad2(cfg.lateMin)}`,
     },
   };
 };

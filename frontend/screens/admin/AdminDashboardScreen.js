@@ -301,6 +301,22 @@ export default function AdminDashboardScreen({ navigation }) {
               </View>
             </TouchableOpacity>
 
+            {/* Org Settings */}
+            <TouchableOpacity
+              style={[st.requestsCard, { backgroundColor: 'rgba(255,179,71,0.08)', borderColor: 'rgba(255,179,71,0.35)' }]}
+              onPress={() => navigation.navigate('AdminOrgSettings')}
+              activeOpacity={0.8}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                <Text style={{ fontSize: 28 }}>⚙️</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[st.actionLabel, { color: g.text }]}>Organization Settings</Text>
+                  <Text style={[st.actionSub, { color: g.textMuted }]}>Work hours, late threshold, working days</Text>
+                </View>
+                <Text style={{ color: g.textDim, fontSize: 20 }}>›</Text>
+              </View>
+            </TouchableOpacity>
+
             {/* Audit Logs action */}
             <TouchableOpacity
               style={[st.requestsCard, { backgroundColor: g.glass, borderColor: g.border }]}
