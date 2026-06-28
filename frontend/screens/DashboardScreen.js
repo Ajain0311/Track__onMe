@@ -17,7 +17,6 @@ import useGoalStore from '../store/goalStore';
 import { isBiometricAvailable, getBiometricLabel } from '../services/biometricAuth';
 import { validateWifiConnection, getAllowedWifiName } from '../services/wifiService';
 import { validateAttendanceLocation } from '../services/locationService';
-import { hasFaceData } from '../services/faceRecognitionService';
 import { getFaceStatusFromServer } from '../services/api';
 import OnboardingCard from '../components/OnboardingCard';
 
@@ -74,6 +73,7 @@ export default function DashboardScreen({ navigation }) {
   const [checkOutPressed, setCheckOutPressed] = useState(false);
   const [connectStatus, setConnectStatus] = useState({ valid: false, message: 'Checking...', type: 'checking' });
   const [faceRegistered, setFaceRegistered] = useState(false);
+  const [faceStatus, setFaceStatus] = useState('none'); // none | pending | rejected | approved
   // true = face registered on server (authoritative), false = not registered or unknown
   const [faceRegisteredOnServer, setFaceRegisteredOnServer] = useState(false);
   const [clockTime, setClockTime] = useState(new Date());
@@ -149,12 +149,13 @@ export default function DashboardScreen({ navigation }) {
     useCallback(() => {
       checkRequirements();
       if (user?.id) {
-        hasFaceData(user.id).then(setFaceRegistered);
-        // Also check server — this is the authoritative source
+        // Server is the single source of truth for face status now.
         getFaceStatusFromServer()
           .then((r) => {
             const reg = !!r.data?.registered;
+            setFaceRegistered(reg);
             setFaceRegisteredOnServer(reg);
+            setFaceStatus(r.data?.status || (reg ? 'approved' : 'none'));
             setOnboardingSteps((prev) => ({ ...(prev || {}), face: reg }));
           })
           .catch(() => {}); // fail-soft — don't block the dashboard
@@ -193,11 +194,12 @@ export default function DashboardScreen({ navigation }) {
     // Run status + requirements in parallel instead of sequentially
     Promise.all([fetchStatus(), checkRequirements()]);
     if (user?.id) {
-        hasFaceData(user.id).then(setFaceRegistered);
         getFaceStatusFromServer()
           .then((r) => {
             const reg = !!r.data?.registered;
+            setFaceRegistered(reg);
             setFaceRegisteredOnServer(reg);
+            setFaceStatus(r.data?.status || (reg ? 'approved' : 'none'));
             setOnboardingSteps((prev) => ({ ...(prev || {}), face: reg }));
           })
           .catch(() => {});
@@ -595,27 +597,34 @@ export default function DashboardScreen({ navigation }) {
           </LinearGradient>
         )}
 
-        {/* ── Face not registered (native: check both local + server) ── */}
-        {!effectiveIsCheckedIn && Platform.OS !== 'web' && (!faceRegistered || !faceRegisteredOnServer) && (
-          <LinearGradient colors={[g.coralSoft, grad.card[1]]} style={[s.infoCard, { borderColor: g.coral }]}>
+        {/* ── Face enrollment status (native; hidden once approved) ── */}
+        {!effectiveIsCheckedIn && Platform.OS !== 'web' && faceStatus !== 'approved' && (
+          <LinearGradient
+            colors={faceStatus === 'pending' ? [g.accentSoft, grad.card[1]] : [g.coralSoft, grad.card[1]]}
+            style={[s.infoCard, { borderColor: faceStatus === 'pending' ? g.accent : g.coral }]}
+          >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={{ fontSize: 18, marginRight: 10 }}>👤</Text>
+              <Text style={{ fontSize: 18, marginRight: 10 }}>{faceStatus === 'pending' ? '⏳' : '👤'}</Text>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: g.coral, fontSize: 13, fontWeight: '700' }}>
-                  {!faceRegistered ? 'Face Not Registered' : 'Face Not Synced to Server'}
+                <Text style={{ color: faceStatus === 'pending' ? g.accent : g.coral, fontSize: 13, fontWeight: '700' }}>
+                  {faceStatus === 'pending' ? 'Face Awaiting Approval'
+                    : faceStatus === 'rejected' ? 'Face Enrollment Rejected'
+                    : 'Face Not Registered'}
                 </Text>
                 <Text style={{ color: g.textMuted, fontSize: 11, marginTop: 2 }}>
-                  {!faceRegistered
-                    ? 'Register your face in Settings → Register Face'
-                    : 'Your face data needs to be re-registered and synced. Go to Settings → Register Face'}
+                  {faceStatus === 'pending' ? 'A manager must approve your face before you can check in.'
+                    : faceStatus === 'rejected' ? 'Please re-register your face in Settings → Register Face.'
+                    : 'Register your face in Settings → Register Face'}
                 </Text>
               </View>
-              <TouchableOpacity
-                style={{ backgroundColor: g.coral, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 }}
-                onPress={() => navigation.navigate('Settings')}
-              >
-                <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>Go →</Text>
-              </TouchableOpacity>
+              {faceStatus !== 'pending' && (
+                <TouchableOpacity
+                  style={{ backgroundColor: g.coral, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 }}
+                  onPress={() => navigation.navigate('Settings')}
+                >
+                  <Text style={{ color: '#fff', fontSize: 11, fontWeight: '800' }}>Go →</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </LinearGradient>
         )}

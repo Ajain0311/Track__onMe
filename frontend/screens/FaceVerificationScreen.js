@@ -2,25 +2,22 @@
 //
 // SECURITY MODEL:
 //   Native (iOS/Android):
-//     1. Camera detects face and extracts geometric feature ratios (local pre-screen)
-//     2. After CONSECUTIVE_MATCHES frames above threshold, POST /api/face/verify
-//        → Backend compares against stored features in DB
-//        → If pass, returns a signed faceToken (2-minute TTL)
-//     3. faceToken is included in POST /api/checkin or POST /api/checkout
-//     4. Backend validates token before writing attendance record
+//     1. ML Kit detects exactly one well-posed face.
+//     2. Active liveness: the user must BLINK (eyes open→closed→open).
+//     3. One frame is auto-captured → on-device passive anti-spoof + quality gate
+//        → ArcFace embedding (faceEmbeddingService).
+//     4. The embedding is sent to POST /api/face/verify, which compares it
+//        (cosine) against the user's manager-APPROVED enrollment and, on a match,
+//        returns a signed faceToken (2-min TTL).
+//     5. Check-in/out then runs automatically — there is NO manual Verify button.
 //
-//   Web:
-//     1. User enters their account password
-//     2. POST /api/face/verify-web (backend re-authenticates via Supabase)
-//        → If correct, returns a signed faceToken (2-minute TTL)
-//     3. faceToken is included in POST /api/checkin or POST /api/checkout
-//     4. Backend validates token before writing attendance record
+//   Web: account-password second factor → POST /api/face/verify-web → faceToken.
 //
-//   NO BYPASS: check-in/out is rejected by the backend without a valid faceToken.
+//   NO BYPASS: the backend rejects check-in/out without a valid faceToken.
 
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
   Dimensions, Platform, Linking, TextInput,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -30,17 +27,14 @@ import useAuthStore from '../store/authStore';
 import useTimeStore from '../store/timeStore';
 import Toast from '../components/Toast';
 import {
-  processDetectedFace,
-  validateFacePosition,
-  extractFaceFeatures,
-  getFaceData,
-  calculateSimilarity,
-  detectFacesFromImage,
-  averageFeatures,
+  detectFacesFromImage, processDetectedFace, validateFacePosition,
 } from '../services/faceRecognitionService';
 import {
+  loadModels, analyzeCapture, buildFacePayload,
+} from '../services/faceEmbeddingService';
+import {
   checkIn, checkOut,
-  verifyFaceWithServer, verifyWebWithServer,
+  verifyFaceWithServer, verifyWebWithServer, getFaceStatusFromServer,
   getApiErrorMessage,
 } from '../services/api';
 import { getWifiInfo } from '../services/wifiService';
@@ -48,269 +42,171 @@ import { getWifiInfo } from '../services/wifiService';
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const CAMERA_SIZE = Math.min(screenWidth - 48, screenHeight * 0.42, 380);
 
-// Require this many CONSECUTIVE frames above threshold before triggering server check
-const CONSECUTIVE_MATCHES = 3;
-// Local pre-screen threshold — same value used on the server
-const SIMILARITY_THRESHOLD = 0.82;
+// Blink thresholds on ML Kit eye-open probabilities.
+const EYE_OPEN = 0.6;
+const EYE_SHUT = 0.3;
 
 export default function FaceVerificationScreen({ navigation, route }) {
   const { mode, location: routeLocation = null } = route.params || { mode: 'checkin' };
   const isWeb = Platform.OS === 'web';
   const { colors: g, gradients: grad } = useThemeStore();
-  const { user } = useAuthStore();
   const { checkIn: storeCheckIn, checkOut: storeCheckOut } = useTimeStore();
 
   const [permission, requestPermission] = useCameraPermissions();
+  const [statusLoading, setStatusLoading] = useState(!isWeb);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [faceDetected, setFaceDetected] = useState(false);
+  const [isCameraReady, setIsCameraReady] = useState(false);
   const [faceMessage, setFaceMessage] = useState(
-    isWeb
-      ? 'Confirm your identity with your account password'
-      : 'Position your face in the frame'
+    isWeb ? 'Confirm your identity with your account password' : 'Position your face in the frame'
   );
+  const [matchState, setMatchState] = useState('searching'); // searching | blink | verifying | done
+  const [slowRequest, setSlowRequest] = useState(false);
+  const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
 
   // Web second factor
   const [webPassword, setWebPassword] = useState('');
   const [webPasswordShow, setWebPasswordShow] = useState(false);
 
-  // Native face state
-  const [similarity, setSimilarity] = useState(0);
-  const [consecutiveMatches, setConsecutiveMatches] = useState(0);
-  const [faceMatchConfirmed, setFaceMatchConfirmed] = useState(false);
-  const [faceBounds, setFaceBounds] = useState(null);
-  const [lightingQuality, setLightingQuality] = useState('unknown');
-  const [slowRequest, setSlowRequest] = useState(false);
-
-  const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
-  const [storedFaceData, setStoredFaceData] = useState(null);
-  const [faceDataLoading, setFaceDataLoading] = useState(true);
-
-  const [isCameraReady, setIsCameraReady] = useState(false);
-
   const cameraRef = useRef(null);
-  const currentFaceRef = useRef(null);
-  const lastDetectionTimeRef = useRef(Date.now());
-  const slowTimerRef = useRef(null);
-  const consecutiveRef = useRef(0);
   const pollActiveRef = useRef(false);
-  // Features from frames that passed the local pre-screen — the server check
-  // uses the average of the last 3, which is far more stable than any single
-  // frame (same multi-sample idea registration already uses).
-  const matchedFeaturesRef = useRef([]);
+  const verifyingRef = useRef(false);
+  const blinkPhaseRef = useRef(0); // 0 need-open, 1 saw-open, 2 saw-closed → blink complete
+  const slowTimerRef = useRef(null);
 
-  const showToast = (message, type = 'success') =>
-    setToast({ visible: true, message, type });
+  const showToast = (message, type = 'error') => setToast({ visible: true, message, type });
 
-  // ── Load stored face data on mount ──────────────────────────────────────────
+  // ── Warm models + preflight the server face status (native) ──────────────────
   useEffect(() => {
-    if (isWeb) {
-      setFaceDataLoading(false);
-      return;
-    }
-    if (!user?.id) return;
+    if (isWeb) return;
+    loadModels().catch(() => showToast('Face models failed to load — please update the app.'));
+    getFaceStatusFromServer()
+      .then((r) => {
+        const st = r.data?.status;
+        setStatusLoading(false);
+        if (st === 'approved') return; // good to verify
+        if (st === 'pending') {
+          showToast('Your face is awaiting manager approval.', 'error');
+          setFaceMessage('Awaiting manager approval — you cannot check in yet.');
+          setTimeout(() => navigation.goBack(), 2200);
+        } else {
+          // none or rejected → send to registration
+          navigation.replace('FaceRegistration');
+        }
+      })
+      .catch(() => { setStatusLoading(false); /* let them try; verify will 4xx clearly */ });
+  }, [isWeb, navigation]);
 
-    setFaceDataLoading(true);
-    getFaceData(user.id).then((data) => {
-      setFaceDataLoading(false);
-
-      // No face registered locally — block check-in
-      if (!data) {
-        Alert.alert(
-          'Face Not Registered',
-          'Register your face in Settings → Register Face before checking in.',
-          [
-            { text: 'Register Now', onPress: () => navigation.replace('FaceRegistration') },
-            { text: 'Cancel', style: 'cancel', onPress: () => navigation.goBack() },
-          ]
-        );
-        return;
-      }
-
-      // Outdated local format — prompt re-registration
-      if (data.needsReRegistration) {
-        Alert.alert(
-          'Re-registration Required',
-          'Your face data is in an outdated format. Please re-register your face.',
-          [
-            { text: 'Re-register Now', onPress: () => navigation.replace('FaceRegistration') },
-            { text: 'Cancel', style: 'cancel', onPress: () => navigation.goBack() },
-          ]
-        );
-        return;
-      }
-
-      if (data.features?.__v !== 2) {
-        Alert.alert(
-          'Invalid Face Data',
-          'Your face data is invalid. Please re-register.',
-          [
-            { text: 'Re-register', onPress: () => navigation.replace('FaceRegistration') },
-            { text: 'Cancel', style: 'cancel', onPress: () => navigation.goBack() },
-          ]
-        );
-        return;
-      }
-
-      setStoredFaceData(data);
-    }).catch(() => setFaceDataLoading(false));
-  }, [user, navigation, isWeb]);
-
-  // ── Face detection via ML Kit polling ───────────────────────────────────────
-  // CameraView has no face-detection callback on SDK 52, so we poll: take a
-  // low-quality photo every 1.5 s and run ML Kit detection on it.
+  // ── Native liveness/verify poll ──────────────────────────────────────────────
   useEffect(() => {
-    if (isWeb || !isCameraReady || faceDataLoading) return;
+    if (isWeb || !isCameraReady || statusLoading) return;
     const id = setInterval(async () => {
-      if (pollActiveRef.current || isProcessing || !cameraRef.current) return;
+      if (pollActiveRef.current || verifyingRef.current || isProcessing || !cameraRef.current) return;
       pollActiveRef.current = true;
       try {
-        const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.15, skipProcessing: true, exif: false,
-        });
+        const photo = await cameraRef.current.takePictureAsync({ quality: 0.15, skipProcessing: true, exif: false });
         const faces = await detectFacesFromImage(photo.uri);
-        handleFacesDetected({ faces });
-      } catch (e) {
-        if (e?.message === 'FACE_MODULE_MISSING' || /doesn't seem to be linked/.test(e?.message || '')) {
-          setFaceMessage('Face detection unavailable — please update the app');
+
+        if (!faces?.length) { resetChallenge('No face detected'); return; }
+        if (faces.length > 1) { resetChallenge('Multiple faces — one person only'); return; }
+
+        const face = processDetectedFace(faces[0]);
+        const v = validateFacePosition(face);
+        if (!v.valid) { resetChallenge(v.message); return; }
+
+        // Active liveness — require a blink before we capture.
+        const lo = face.leftEyeOpenProbability, ro = face.rightEyeOpenProbability;
+        const eyesOpen = lo > EYE_OPEN && ro > EYE_OPEN;
+        const eyesShut = lo < EYE_SHUT && ro < EYE_SHUT;
+
+        if (blinkPhaseRef.current === 0) {
+          setMatchState('blink');
+          if (eyesOpen) { blinkPhaseRef.current = 1; }
+          setFaceMessage('Blink to verify');
+        } else if (blinkPhaseRef.current === 1) {
+          if (eyesShut) blinkPhaseRef.current = 2;
+          setFaceMessage('Blink to verify');
+        } else if (blinkPhaseRef.current === 2) {
+          if (eyesOpen) {
+            // Blink complete — capture + verify (guarded so it runs once).
+            runVerification();
+          }
         }
-        /* otherwise camera busy — skip this tick */
+      } catch (e) {
+        if (e?.message === 'FACE_MODULE_MISSING') setFaceMessage('Face detection unavailable — update the app');
+        /* otherwise camera busy — skip tick */
+      } finally {
+        pollActiveRef.current = false;
       }
-      finally { pollActiveRef.current = false; }
-    }, 1500);
+    }, 900);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCameraReady, isWeb, faceDataLoading]);
+  }, [isCameraReady, isWeb, statusLoading, isProcessing]);
 
-  // ── "No face detected" hint after 7s ────────────────────────────────────────
-  useEffect(() => {
-    if (isWeb || faceDetected || isProcessing) return;
-    const interval = setInterval(() => {
-      if (Date.now() - lastDetectionTimeRef.current > 7000) {
-        setFaceMessage('No face detected — try better lighting or move closer');
-      }
-    }, 2500);
-    return () => clearInterval(interval);
-  }, [faceDetected, isProcessing, isWeb]);
+  const resetChallenge = (msg) => {
+    if (verifyingRef.current) return;
+    blinkPhaseRef.current = 0;
+    setMatchState('searching');
+    if (msg) setFaceMessage(msg);
+  };
 
-  // ── Real-time face detection + local similarity pre-screen ──────────────────
-  const handleFacesDetected = ({ faces }) => {
-    if (isProcessing) return;
-    lastDetectionTimeRef.current = Date.now();
+  // ── Capture one frame → anti-spoof + embedding → server verify → check-in ────
+  const runVerification = async () => {
+    if (verifyingRef.current) return;
+    verifyingRef.current = true;
+    setMatchState('verifying');
+    setIsProcessing(true);
+    setFaceMessage('Verifying…');
+    slowTimerRef.current = setTimeout(() => setSlowRequest(true), 6000);
 
-    if (!faces || faces.length === 0) {
-      setFaceDetected(false);
-      setFaceMessage('No face detected');
-      setSimilarity(0);
-      setFaceBounds(null);
-      currentFaceRef.current = null;
-      setLightingQuality('unknown');
-      consecutiveRef.current = 0;
-      matchedFeaturesRef.current = [];
-      setConsecutiveMatches(0);
-      setFaceMatchConfirmed(false);
-      return;
-    }
+    try {
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.85, skipProcessing: false, exif: false });
+      const faces = await detectFacesFromImage(photo.uri);
+      if (faces?.length !== 1) throw new Error('Make sure only your face is in the frame.');
 
-    if (faces.length > 1) {
-      setFaceDetected(false);
-      setFaceMessage('Multiple faces detected — one person only');
-      setFaceBounds(null);
-      currentFaceRef.current = null;
-      consecutiveRef.current = 0;
-      matchedFeaturesRef.current = [];
-      setConsecutiveMatches(0);
-      setFaceMatchConfirmed(false);
-      return;
-    }
+      const face = processDetectedFace(faces[0]);
+      const result = await analyzeCapture({ uri: photo.uri, width: photo.width, height: photo.height }, face);
+      if (!result.ok) throw new Error(result.reason || 'Capture failed.');
 
-    const face = processDetectedFace(faces[0]);
-    currentFaceRef.current = face;
-    if (face.bounds) setFaceBounds(face.bounds);
+      const payload = buildFacePayload([result.embedding], result.quality);
+      const { data } = await verifyFaceWithServer(payload, mode);
+      const faceToken = data?.token;
+      if (!faceToken) throw new Error('Server did not return a verification token.');
 
-    const hasLandmarks =
-      face.leftEyeOpenProbability !== undefined ||
-      face.rightEyeOpenProbability !== undefined;
-    setLightingQuality(hasLandmarks ? 'good' : 'poor');
-
-    const validation = validateFacePosition(face);
-    if (!validation.valid) {
-      setFaceDetected(false);
-      setFaceMessage(validation.message);
-      setSimilarity(0);
-      consecutiveRef.current = 0;
-      matchedFeaturesRef.current = [];
-      setConsecutiveMatches(0);
-      setFaceMatchConfirmed(false);
-      return;
-    }
-
-    setFaceDetected(true);
-
-    // Local pre-screen against AsyncStorage face data
-    if (storedFaceData?.features) {
-      const currentFeatures = extractFaceFeatures(face);
-      if (currentFeatures && currentFeatures.__v === 2) {
-        const sim = calculateSimilarity(storedFaceData.features, currentFeatures);
-        setSimilarity(sim);
-
-        if (sim >= SIMILARITY_THRESHOLD) {
-          consecutiveRef.current += 1;
-          const count = consecutiveRef.current;
-          setConsecutiveMatches(count);
-          matchedFeaturesRef.current = [...matchedFeaturesRef.current.slice(-4), currentFeatures];
-
-          if (count >= CONSECUTIVE_MATCHES) {
-            setFaceMatchConfirmed(true);
-            setFaceMessage(`✓ Pre-screen passed — tap to ${mode === 'checkin' ? 'check in' : 'check out'}`);
-          } else {
-            setFaceMessage(`Hold still... (${count}/${CONSECUTIVE_MATCHES})`);
-          }
-        } else {
-          consecutiveRef.current = 0;
-          setConsecutiveMatches(0);
-          setFaceMatchConfirmed(false);
-          matchedFeaturesRef.current = [];
-          setFaceMessage(
-            sim > 0.5
-              ? `Partial match (${Math.round(sim * 100)}%) — adjust position`
-              : 'Face not recognized — ensure good lighting'
-          );
-        }
-      } else {
-        setFaceMessage('Could not extract face features — try better lighting');
-        consecutiveRef.current = 0;
-        setFaceMatchConfirmed(false);
-      }
-    } else {
-      setFaceMessage('✓ Face detected — loading face data…');
+      setMatchState('done');
+      if (mode === 'checkin') await performCheckIn(faceToken);
+      else await performCheckOut(faceToken);
+    } catch (error) {
+      clearTimeout(slowTimerRef.current);
+      setSlowRequest(false);
+      setIsProcessing(false);
+      verifyingRef.current = false;
+      blinkPhaseRef.current = 0;
+      setMatchState('searching');
+      const msg = error?.response ? getApiErrorMessage(error) : (error?.message || 'Verification failed.');
+      showToast(msg, 'error');
+      setFaceMessage('Try again — blink to verify');
     }
   };
 
-  // ── Check-in / Check-out API calls (require a face token) ───────────────────
+  // ── Check-in / Check-out (unchanged contract: faceToken → /api/checkin) ──────
   const performCheckIn = async (faceToken) => {
     try {
       await checkIn(routeLocation, faceToken);
       const wifiInfo = await getWifiInfo();
-
-      // For GPS-based check-ins, pass the geofence centre so the auto-checkout
-      // monitor knows when the user has left the area.
       const isGps = routeLocation?.locationCenterLat != null;
       const locationMeta = isGps ? {
-        latitude:     routeLocation.locationCenterLat,
-        longitude:    routeLocation.locationCenterLon,
+        latitude: routeLocation.locationCenterLat,
+        longitude: routeLocation.locationCenterLon,
         radiusMeters: routeLocation.locationRadius,
       } : null;
-
       await storeCheckIn(wifiInfo?.ssid || null, 0, locationMeta);
-      clearTimeout(slowTimerRef.current);
-      setSlowRequest(false);
+      clearTimeout(slowTimerRef.current); setSlowRequest(false);
       showToast('Check-in successful!', 'success');
-      setTimeout(() => navigation.goBack(), 1600);
+      setTimeout(() => navigation.goBack(), 1500);
     } catch (error) {
-      clearTimeout(slowTimerRef.current);
-      setSlowRequest(false);
+      clearTimeout(slowTimerRef.current); setSlowRequest(false);
       showToast(getApiErrorMessage(error), 'error');
-      setIsProcessing(false);
+      setIsProcessing(false); verifyingRef.current = false; blinkPhaseRef.current = 0; setMatchState('searching');
     }
   };
 
@@ -318,124 +214,57 @@ export default function FaceVerificationScreen({ navigation, route }) {
     try {
       await checkOut(faceToken);
       await storeCheckOut();
-      clearTimeout(slowTimerRef.current);
-      setSlowRequest(false);
+      clearTimeout(slowTimerRef.current); setSlowRequest(false);
       showToast('Check-out successful!', 'success');
-      setTimeout(() => navigation.goBack(), 1600);
+      setTimeout(() => navigation.goBack(), 1500);
     } catch (error) {
-      clearTimeout(slowTimerRef.current);
-      setSlowRequest(false);
+      clearTimeout(slowTimerRef.current); setSlowRequest(false);
       showToast(getApiErrorMessage(error), 'error');
-      setIsProcessing(false);
+      setIsProcessing(false); verifyingRef.current = false; blinkPhaseRef.current = 0; setMatchState('searching');
     }
   };
 
-  // ── Main verify + proceed handler ───────────────────────────────────────────
-  const verifyAndProceed = async () => {
+  // ── Web: password second factor ──────────────────────────────────────────────
+  const verifyWeb = async () => {
+    if (!webPassword || webPassword.length < 6) {
+      showToast('Enter your account password (min 6 characters).', 'error');
+      return;
+    }
     setIsProcessing(true);
-    setSlowRequest(false);
     slowTimerRef.current = setTimeout(() => setSlowRequest(true), 6000);
-
-    // ── WEB: server-side password verification ─────────────────────────────
-    if (isWeb) {
-      if (!webPassword || webPassword.length < 6) {
-        clearTimeout(slowTimerRef.current);
-        showToast('Enter your account password (min 6 characters).', 'error');
-        setIsProcessing(false);
-        return;
-      }
-
-      try {
-        const { data } = await verifyWebWithServer(webPassword, mode);
-        const faceToken = data?.token;
-        if (!faceToken) throw new Error('Server did not return a verification token.');
-        if (mode === 'checkin') await performCheckIn(faceToken);
-        else await performCheckOut(faceToken);
-      } catch (error) {
-        clearTimeout(slowTimerRef.current);
-        setSlowRequest(false);
-        showToast(getApiErrorMessage(error) || 'Incorrect password. Try again.', 'error');
-        setIsProcessing(false);
-      }
-      return;
-    }
-
-    // ── NATIVE: face must be detected and locally pre-screened ─────────────
-    if (!faceDetected || !faceMatchConfirmed) {
-      clearTimeout(slowTimerRef.current);
-      showToast(
-        !faceDetected
-          ? 'Position your face in the frame first'
-          : `Hold still — need ${CONSECUTIVE_MATCHES} consistent matches`,
-        'error'
-      );
-      setIsProcessing(false);
-      return;
-    }
-
-    if (!storedFaceData) {
-      clearTimeout(slowTimerRef.current);
-      showToast('Face data not loaded. Please try again.', 'error');
-      setIsProcessing(false);
-      return;
-    }
-
-    // Build the verification sample: average the last 3 pre-screened frames
-    // (plus the current one) so one noisy frame can't fail an honest match.
-    const currentFeature = currentFaceRef.current
-      ? extractFaceFeatures(currentFaceRef.current)
-      : null;
-    const samples = [...matchedFeaturesRef.current.slice(-3)];
-    if (currentFeature?.__v === 2) samples.push(currentFeature);
-    const verifyFeature = samples.length >= 2 ? averageFeatures(samples) : currentFeature;
-
-    if (!verifyFeature || verifyFeature.__v !== 2) {
-      clearTimeout(slowTimerRef.current);
-      showToast('Could not extract face features. Look directly at the camera.', 'error');
-      setIsProcessing(false);
-      return;
-    }
-
-    // Send to server for final authoritative comparison
     try {
-      const { data } = await verifyFaceWithServer(verifyFeature, mode);
+      const { data } = await verifyWebWithServer(webPassword, mode);
       const faceToken = data?.token;
       if (!faceToken) throw new Error('Server did not return a verification token.');
       if (mode === 'checkin') await performCheckIn(faceToken);
       else await performCheckOut(faceToken);
     } catch (error) {
-      clearTimeout(slowTimerRef.current);
-      setSlowRequest(false);
-      showToast(getApiErrorMessage(error), 'error');
+      clearTimeout(slowTimerRef.current); setSlowRequest(false);
+      showToast(getApiErrorMessage(error) || 'Incorrect password. Try again.', 'error');
       setIsProcessing(false);
     }
   };
 
-  // ── Face data still loading ──────────────────────────────────────────────────
-  if (faceDataLoading && !isWeb) {
+  // ── Loading face status (native) ─────────────────────────────────────────────
+  if (statusLoading && !isWeb) {
     return (
       <LinearGradient colors={grad.screen} style={s.container}>
-        <View style={s.centered}>
-          <ActivityIndicator size="large" color={g.accent} />
-          <Text style={[s.hint, { color: g.textMuted, marginTop: 12 }]}>Loading face data…</Text>
-        </View>
+        <View style={s.centered}><ActivityIndicator size="large" color={g.accent} />
+          <Text style={[s.hint, { color: g.textMuted, marginTop: 12 }]}>Checking face status…</Text></View>
       </LinearGradient>
     );
   }
 
-  // ── Camera permission gates (native only) ────────────────────────────────────
+  // ── Camera permission gates (native) ──────────────────────────────────────────
   if (!isWeb) {
     if (!permission) {
       return (
         <LinearGradient colors={grad.screen} style={s.container}>
-          <View style={s.centered}>
-            <ActivityIndicator size="large" color={g.accent} />
-            <Text style={[s.hint, { color: g.textMuted, marginTop: 12 }]}>Loading camera...</Text>
-          </View>
+          <View style={s.centered}><ActivityIndicator size="large" color={g.accent} />
+            <Text style={[s.hint, { color: g.textMuted, marginTop: 12 }]}>Loading camera…</Text></View>
         </LinearGradient>
       );
     }
-
     if (!permission.granted) {
       const canAsk = permission.canAskAgain !== false;
       return (
@@ -444,19 +273,12 @@ export default function FaceVerificationScreen({ navigation, route }) {
             <Text style={{ fontSize: 48, marginBottom: 16 }}>📷</Text>
             <Text style={[s.title, { color: g.text, textAlign: 'center' }]}>Camera Access Needed</Text>
             <Text style={[s.hint, { color: g.textMuted, textAlign: 'center', marginBottom: 28 }]}>
-              {canAsk
-                ? 'Camera permission is required to verify your face.'
-                : 'Camera permission was denied. Please enable it in Settings.'}
+              {canAsk ? 'Camera permission is required to verify your face.' : 'Camera permission was denied. Please enable it in Settings.'}
             </Text>
-            {canAsk ? (
-              <TouchableOpacity style={[s.btn, { backgroundColor: g.accent }]} onPress={requestPermission}>
-                <Text style={s.btnText}>Grant Permission</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={[s.btn, { backgroundColor: g.accent }]} onPress={() => Linking.openSettings()}>
-                <Text style={s.btnText}>Open Settings</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity style={[s.btn, { backgroundColor: g.accent }]}
+              onPress={canAsk ? requestPermission : () => Linking.openSettings()}>
+              <Text style={s.btnText}>{canAsk ? 'Grant Permission' : 'Open Settings'}</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={[s.cancelBtn, { borderColor: g.border }]} onPress={() => navigation.goBack()}>
               <Text style={[s.cancelText, { color: g.textMuted }]}>Cancel</Text>
             </TouchableOpacity>
@@ -466,37 +288,25 @@ export default function FaceVerificationScreen({ navigation, route }) {
     }
   }
 
-  // Button is ready when:
-  //   Web:    password length ≥ 6 (server will verify it — no local bypass)
-  //   Native: local pre-screen confirmed (consecutive matches) + face still detected
-  const btnReady = isWeb
-    ? webPassword.length >= 6
-    : faceMatchConfirmed && faceDetected;
-
-  const matchPct = Math.round(similarity * 100);
+  const confirmed = matchState === 'done';
+  const blinking = matchState === 'blink' || matchState === 'verifying';
+  const borderColor = confirmed ? g.mint : blinking ? g.accent : g.coral;
 
   return (
     <LinearGradient colors={grad.screen} style={s.container}>
-      <Toast
-        message={toast.message}
-        type={toast.type}
-        visible={toast.visible}
-        onHide={() => setToast((t) => ({ ...t, visible: false }))}
-      />
+      <Toast message={toast.message} type={toast.type} visible={toast.visible}
+        onHide={() => setToast((t) => ({ ...t, visible: false }))} />
 
       <View style={s.inner}>
         <View style={s.header}>
-          <Text style={[s.title, { color: g.text }]}>
-            {mode === 'checkin' ? 'Face Check-in' : 'Face Check-out'}
-          </Text>
+          <Text style={[s.title, { color: g.text }]}>{mode === 'checkin' ? 'Face Check-in' : 'Face Check-out'}</Text>
           <Text style={[s.hint, { color: g.textMuted }]}>
-            {isWeb
-              ? 'Enter your account password — verified server-side before submitting'
-              : `Hold your face in frame — ${CONSECUTIVE_MATCHES} matches required, then server verification`}
+            {isWeb ? 'Enter your account password — verified server-side before submitting'
+                   : 'Look at the camera and blink — verification happens automatically'}
           </Text>
         </View>
 
-        {/* ── Web password second factor ── */}
+        {/* Web password second factor */}
         {isWeb && (
           <View style={[s.webPwBox, { backgroundColor: g.glass, borderColor: g.border }]}>
             <Text style={{ color: g.textMuted, fontSize: 11, fontWeight: '800', letterSpacing: 0.5, marginBottom: 8 }}>
@@ -504,144 +314,65 @@ export default function FaceVerificationScreen({ navigation, route }) {
             </Text>
             <View style={{ flexDirection: 'row', gap: 8 }}>
               <TextInput
-                style={{
-                  flex: 1, backgroundColor: 'rgba(0,0,0,0.32)', borderColor: g.border,
-                  color: g.text, borderWidth: 1, borderRadius: 12,
-                  paddingHorizontal: 14, paddingVertical: 12, fontSize: 14,
-                }}
-                placeholder="Your account password"
-                placeholderTextColor={g.textDim}
-                secureTextEntry={!webPasswordShow}
-                value={webPassword}
-                onChangeText={setWebPassword}
-                autoCapitalize="none"
-                autoCorrect={false}
-                onSubmitEditing={btnReady ? verifyAndProceed : undefined}
+                style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.32)', borderColor: g.border, color: g.text, borderWidth: 1, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14 }}
+                placeholder="Your account password" placeholderTextColor={g.textDim}
+                secureTextEntry={!webPasswordShow} value={webPassword} onChangeText={setWebPassword}
+                autoCapitalize="none" autoCorrect={false}
+                onSubmitEditing={webPassword.length >= 6 ? verifyWeb : undefined}
               />
-              <TouchableOpacity
-                onPress={() => setWebPasswordShow((v) => !v)}
-                style={{
-                  paddingHorizontal: 14, borderWidth: 1, borderColor: g.border,
-                  borderRadius: 12, alignItems: 'center', justifyContent: 'center',
-                }}
-              >
+              <TouchableOpacity onPress={() => setWebPasswordShow((v) => !v)}
+                style={{ paddingHorizontal: 14, borderWidth: 1, borderColor: g.border, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }}>
                 <Text style={{ fontSize: 16 }}>{webPasswordShow ? '🙈' : '👁'}</Text>
               </TouchableOpacity>
             </View>
-            <Text style={{ color: g.textDim, fontSize: 11, marginTop: 8, lineHeight: 16 }}>
-              Password is verified by the server — it is never stored in the app.
-            </Text>
           </View>
         )}
 
-        {/* ── Camera view (native only) ── */}
-        <View style={[s.camWrap, {
-          width: CAMERA_SIZE,
-          height: isWeb ? CAMERA_SIZE * 0.35 : CAMERA_SIZE,
-          borderColor: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : g.coral,
-        }]}>
-          {!isWeb && (
-            <CameraView
-              ref={cameraRef}
-              style={StyleSheet.absoluteFill}
-              facing="front"
-              onCameraReady={() => setIsCameraReady(true)}
-            />
-          )}
-          {isWeb && (
+        {/* Camera (native) */}
+        <View style={[s.camWrap, { width: CAMERA_SIZE, height: isWeb ? CAMERA_SIZE * 0.35 : CAMERA_SIZE, borderColor }]}>
+          {!isWeb ? (
+            <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="front"
+              onCameraReady={() => setIsCameraReady(true)} />
+          ) : (
             <View style={[StyleSheet.absoluteFill, { alignItems: 'center', justifyContent: 'center' }]}>
               <Text style={{ fontSize: 48 }}>🌐</Text>
-              <Text style={{ color: g.textMuted, fontSize: 13, marginTop: 8, textAlign: 'center' }}>
-                Web — password verification
-              </Text>
+              <Text style={{ color: g.textMuted, fontSize: 13, marginTop: 8, textAlign: 'center' }}>Web — password verification</Text>
             </View>
           )}
-
           {!isWeb && (
             <View style={StyleSheet.absoluteFill} pointerEvents="none">
-              <View style={[s.corner, s.tl, { borderColor: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : g.coral }]} />
-              <View style={[s.corner, s.tr, { borderColor: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : g.coral }]} />
-              <View style={[s.corner, s.bl, { borderColor: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : g.coral }]} />
-              <View style={[s.corner, s.br, { borderColor: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : g.coral }]} />
-              <View style={[s.oval, { borderColor: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : 'rgba(255,255,255,0.3)' }]} />
-              {faceBounds && (
-                <View style={[s.bbox, {
-                  left: faceBounds.origin.x, top: faceBounds.origin.y,
-                  width: faceBounds.size.width, height: faceBounds.size.height,
-                  borderColor: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : g.coral,
-                }]} />
-              )}
-              <View style={[s.lightPill, {
-                backgroundColor: lightingQuality === 'good' ? 'rgba(29,185,138,0.85)' : 'rgba(0,0,0,0.55)',
-              }]}>
-                <Text style={s.lightText}>
-                  {lightingQuality === 'good' ? '☀ Good' : lightingQuality === 'poor' ? '☁ Low light' : '● Checking'}
-                </Text>
-              </View>
-              {consecutiveMatches > 0 && !faceMatchConfirmed && (
-                <View style={[s.matchPill, { backgroundColor: 'rgba(139,124,255,0.85)' }]}>
-                  <Text style={s.matchText}>{consecutiveMatches}/{CONSECUTIVE_MATCHES}</Text>
-                </View>
-              )}
-              {faceMatchConfirmed && (
-                <View style={[s.matchPill, { backgroundColor: 'rgba(62,232,199,0.9)' }]}>
-                  <Text style={[s.matchText, { color: '#000' }]}>✓ Pre-screen</Text>
-                </View>
-              )}
+              {['tl', 'tr', 'bl', 'br'].map((c) => <View key={c} style={[s.corner, s[c], { borderColor }]} />)}
+              <View style={[s.oval, { borderColor: confirmed ? g.mint : blinking ? g.accent : 'rgba(255,255,255,0.3)' }]} />
             </View>
           )}
         </View>
 
-        {/* ── Status pill ── */}
+        {/* Status */}
         {!isWeb && (
-          <View style={[s.status, {
-            backgroundColor: faceMatchConfirmed ? g.mintSoft : faceDetected ? g.accentSoft : g.coralSoft,
-          }]}>
-            <Text style={[s.statusText, {
-              color: faceMatchConfirmed ? g.mint : faceDetected ? g.accent : g.coral,
-            }]}>{faceMessage}</Text>
-            {similarity > 0 && (
-              <Text style={[s.simText, { color: g.textMuted }]}>
-                Local match: {matchPct}% {matchPct >= 82 ? '✓' : matchPct >= 60 ? '~' : '✗'} (server verifies on submit)
-              </Text>
-            )}
+          <View style={[s.status, { backgroundColor: confirmed ? g.mintSoft : blinking ? g.accentSoft : g.coralSoft }]}>
+            <Text style={[s.statusText, { color: confirmed ? g.mint : blinking ? g.accent : g.coral }]}>{faceMessage}</Text>
           </View>
         )}
 
-        {/* ── Slow request notice ── */}
         {slowRequest && (
           <View style={[s.slowBanner, { backgroundColor: g.accentSoft, borderColor: g.accent }]}>
             <ActivityIndicator size="small" color={g.accent} style={{ marginRight: 8 }} />
-            <Text style={[s.slowText, { color: g.accent }]}>
-              Server waking up… may take up to 30s on first request
-            </Text>
+            <Text style={[s.slowText, { color: g.accent }]}>Server waking up… may take up to 30s on first request</Text>
           </View>
         )}
 
-        {/* ── Verify button ── */}
-        <TouchableOpacity
-          style={[s.btn, {
-            backgroundColor: btnReady
-              ? (mode === 'checkin' ? g.mint : g.coral)
-              : g.textDim,
-            opacity: btnReady ? 1 : 0.45,
-            marginTop: 4,
-          }]}
-          onPress={verifyAndProceed}
-          disabled={!btnReady || isProcessing}
-        >
-          {isProcessing
-            ? <ActivityIndicator color="#fff" />
-            : <Text style={s.btnText}>
-                {mode === 'checkin' ? '▶  Verify & Check In' : '■  Verify & Check Out'}
-              </Text>}
-        </TouchableOpacity>
+        {/* Web verify button (native has no button — it's automatic) */}
+        {isWeb && (
+          <TouchableOpacity
+            style={[s.btn, { backgroundColor: webPassword.length >= 6 ? (mode === 'checkin' ? g.mint : g.coral) : g.textDim, opacity: webPassword.length >= 6 ? 1 : 0.45 }]}
+            onPress={verifyWeb} disabled={webPassword.length < 6 || isProcessing}
+          >
+            {isProcessing ? <ActivityIndicator color="#fff" />
+              : <Text style={s.btnText}>{mode === 'checkin' ? '▶  Verify & Check In' : '■  Verify & Check Out'}</Text>}
+          </TouchableOpacity>
+        )}
 
-        <TouchableOpacity
-          style={[s.cancelBtn, { borderColor: g.border }]}
-          onPress={() => navigation.goBack()}
-          disabled={isProcessing}
-        >
+        <TouchableOpacity style={[s.cancelBtn, { borderColor: g.border }]} onPress={() => navigation.goBack()} disabled={isProcessing}>
           <Text style={[s.cancelText, { color: g.textMuted }]}>Cancel</Text>
         </TouchableOpacity>
       </View>
@@ -651,7 +382,6 @@ export default function FaceVerificationScreen({ navigation, route }) {
 
 const CORNER = 22;
 const CW = 3;
-
 const s = StyleSheet.create({
   container: { flex: 1 },
   inner: { flex: 1, padding: 24, paddingTop: 52 },
@@ -659,32 +389,16 @@ const s = StyleSheet.create({
   header: { marginBottom: 20 },
   title: { fontSize: 26, fontWeight: '900', marginBottom: 6 },
   hint: { fontSize: 13, lineHeight: 20 },
-  camWrap: {
-    alignSelf: 'center', borderRadius: 20, borderWidth: 2.5,
-    overflow: 'hidden', marginBottom: 16,
-  },
-  oval: {
-    position: 'absolute', alignSelf: 'center',
-    top: '10%', width: '55%', height: '75%',
-    borderRadius: 200, borderWidth: 2, borderStyle: 'dashed',
-  },
-  bbox: { position: 'absolute', borderWidth: 2, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)' },
+  camWrap: { alignSelf: 'center', borderRadius: 20, borderWidth: 2.5, overflow: 'hidden', marginBottom: 16 },
+  oval: { position: 'absolute', alignSelf: 'center', top: '10%', width: '55%', height: '75%', borderRadius: 200, borderWidth: 2, borderStyle: 'dashed' },
   corner: { position: 'absolute', width: CORNER, height: CORNER },
   tl: { top: 14, left: 14, borderTopWidth: CW, borderLeftWidth: CW, borderTopLeftRadius: 6 },
   tr: { top: 14, right: 14, borderTopWidth: CW, borderRightWidth: CW, borderTopRightRadius: 6 },
   bl: { bottom: 14, left: 14, borderBottomWidth: CW, borderLeftWidth: CW, borderBottomLeftRadius: 6 },
   br: { bottom: 14, right: 14, borderBottomWidth: CW, borderRightWidth: CW, borderBottomRightRadius: 6 },
-  lightPill: { position: 'absolute', top: 12, right: 12, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
-  lightText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  matchPill: { position: 'absolute', top: 12, left: 12, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 14 },
-  matchText: { color: '#fff', fontSize: 13, fontWeight: '800' },
   status: { borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, marginBottom: 12, alignItems: 'center' },
   statusText: { fontSize: 14, fontWeight: '700', textAlign: 'center' },
-  simText: { fontSize: 11, marginTop: 4, textAlign: 'center' },
-  slowBanner: {
-    flexDirection: 'row', alignItems: 'center',
-    borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, marginBottom: 12, borderWidth: 1,
-  },
+  slowBanner: { flexDirection: 'row', alignItems: 'center', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, marginBottom: 12, borderWidth: 1 },
   slowText: { fontSize: 12, fontWeight: '600', flex: 1 },
   btn: { borderRadius: 16, paddingVertical: 17, alignItems: 'center', marginBottom: 10 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '800' },

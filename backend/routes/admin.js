@@ -15,6 +15,11 @@ const {
   listAllRequests, approve, reject,
 } = require('../controllers/locationRequestController');
 const {
+  listEnrollments,
+  approve: approveFaceEnrollment,
+  reject:  rejectFaceEnrollment,
+} = require('../controllers/faceEnrollmentController');
+const {
   listAllAdminLeaves,
   approve: approveLeave,
   reject:  rejectLeave,
@@ -104,6 +109,17 @@ router.patch('/location-requests/:id/approve',
 router.patch('/location-requests/:id/reject',
   validate({ params: { id: { type: 'uuid', required: true } } }),
   reject,
+);
+
+// ─── Face Enrollments ──────────────────────────────────────────────────────────
+router.get('/face-enrollments', listEnrollments);
+router.patch('/face-enrollments/:id/approve',
+  validate({ params: { id: { type: 'uuid', required: true } } }),
+  approveFaceEnrollment,
+);
+router.patch('/face-enrollments/:id/reject',
+  validate({ params: { id: { type: 'uuid', required: true } } }),
+  rejectFaceEnrollment,
 );
 
 // ─── Leaves ───────────────────────────────────────────────────────────────────

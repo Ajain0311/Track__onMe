@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "test": "node --test --test-reporter=spec __tests__/AppError.test.js __tests__/csvExport.test.js __tests__/rateLimit.test.js __tests__/validate.test.js",
+    "test": "node --test --test-reporter=spec __tests__/AppError.test.js __tests__/csvExport.test.js __tests__/rateLimit.test.js __tests__/validate.test.js __tests__/faceUtils.test.js",
     "migrate": "node scripts/apply-migrations.js",
     "make-admin": "node scripts/make-admin.js"
   },

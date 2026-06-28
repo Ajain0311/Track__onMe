@@ -17,9 +17,9 @@ const registerLimiter = rateLimit({ windowMs: 60_000, max:  5, key: (req) => req
 // Inline body guards (validate middleware doesn't handle nested JSONB well)
 const requireFeatures = asyncHandler(async (req, _res, next) => {
   const { features } = req.body || {};
-  if (!features || features.__v !== 2 || !features.ratios) {
+  if (!features || features.__v !== 3 || !Array.isArray(features.embeddings)) {
     throw AppError.badRequest(
-      'Request body must include { features: { __v: 2, ratios: {...} } }'
+      'Request body must include { features: { __v: 3, model, dim, embeddings: [[...]] } }'
     );
   }
   next();

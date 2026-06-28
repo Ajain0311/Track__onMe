@@ -296,29 +296,49 @@ The frontend cannot bypass server-side checks by hand-crafting a request — eve
 
 ## Face verification logic
 
+As of **v2.2.0** the matcher is **ArcFace-family deep embeddings** (MobileFaceNet,
+128-d), compared by **cosine similarity on the server**. This replaced the old
+geometric-landmark scorer, whose ~10 facial-proportion ratios were a weak
+biometric that produced false accepts (a different person could clear check-in at
+80%+). The server is the authority on the match; the device only ever uploads an
+embedding — never an image.
+
 ### Native (iOS / Android via Expo Camera)
 
-- **Registration** (`FaceRegistrationScreen.js`):
-  1. Camera detects face with `expo-camera` + landmarks
-  2. `validateFacePosition` enforces yaw/roll/pitch limits and minimum face area
-  3. Five valid frames collected over ~3 s
-  4. `averageFeatures` produces a stable reference template
-  5. Saved to **AsyncStorage** at key `@face_data_v2_<userId>`
-- **Verification** (`FaceVerificationScreen.js`):
-  - Live frames → `extractFaceFeatures` → `calculateSimilarity(stored, current)`
-  - Similarity uses **Gaussian decay** on **normalized geometric ratios** (all distances divided by inter-ocular distance, making them scale-invariant)
-  - `SIGMA = 0.07`. Threshold = **0.82**.
-  - Requires **3 consecutive frames** above threshold to enable the verify button (`CONSECUTIVE_MATCHES = 3`)
+- **Registration** (`FaceRegistrationScreen.js`): two guided shots (front +
+  slight turn). Each passes quality + passive anti-spoof gates, then
+  `faceEmbeddingService.analyzeCapture()` produces a 128-d embedding on-device
+  (`react-native-fast-tflite` + a bundled MobileFaceNet `.tflite`). The two
+  embeddings are submitted to `POST /api/face/register`, which stores a **pending
+  `face_enrollment_requests`** row — the face is **inactive until a manager approves it**.
+- **Verification** (`FaceVerificationScreen.js`): single face + pose check → an
+  **active blink challenge** (eyes open→closed→open) → one frame is auto-captured
+  → passive anti-spoof (MiniFASNet) + quality gate → embedding → `POST /api/face/verify`.
+  The server cosine-compares against the approved enrollment and, on a match,
+  returns a signed `faceToken`. **No manual "Verify" button** — check-in/out then
+  runs automatically.
+- **Matching**: cosine similarity in `backend/utils/faceUtils.js`; strict default
+  threshold `FACE_MATCH_THRESHOLD = 0.55` (env-tunable). Calibrate against your
+  enrolled users (sweep ~0.45–0.65).
+
+### Manager approval
+
+`registerFace` notifies admins/managers; they review under **Admin → Face
+Enrollments** (or **Settings → Face Enrollments** for managers) and approve/reject.
+Only on approval do the embeddings move into `user_face_data` (the active table).
 
 ### Web (browser)
 
-- **No face detection in browser.** `expo-camera` on web shows the preview but doesn't run face detection.
-- Therefore web requires a **second factor**: re-entering the account password (`supabase.auth.signInWithPassword`).
-- The verify button stays disabled until ≥ 6 characters are typed.
+- **No face on web** — browsers can't run the native ML stack. Web keeps the
+  **account-password second factor** (`POST /api/face/verify-web`), unchanged.
 
 ### What the backend does about face
 
-**Nothing.** The backend trusts the frontend's identity check. Face features live only in AsyncStorage. This is the biggest remaining attack surface — see [Security risks still present](#security-risks-still-present).
+The backend is **authoritative**: it stores the approved embedding, enforces the
+approval gate, and decides the match (cosine) before issuing the `faceToken` that
+`/api/checkin` requires. On-device liveness (passive + blink) is best-effort — a
+rooted device feeding a synthetic frame can bypass it; see
+[Security risks still present](#security-risks-still-present).
 
 ---
 

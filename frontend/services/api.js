@@ -77,11 +77,11 @@ export function getApiErrorMessage(error) {
 // ─── Face verification ────────────────────────────────────────────────────────
 // Must be called BEFORE checkIn/checkOut — returns a signed faceToken
 
-/** Register face features on the server (native only, call after AsyncStorage save) */
+/** Submit face embeddings for manager approval (native; features = {__v:3, model, dim, embeddings, …}) */
 export const registerFaceOnServer = (features) =>
   api.post('/face/register', { features });
 
-/** Verify face features server-side, get a signed token for check-in/out (native) */
+/** Verify a live face embedding server-side; returns a signed faceToken on a match (native) */
 export const verifyFaceWithServer = (features, mode) =>
   api.post('/face/verify', { features, mode });
 
@@ -194,6 +194,15 @@ export const adminApproveLocationRequest = (id, adminNote) =>
   api.patch(`/admin/location-requests/${id}/approve`, { adminNote });
 export const adminRejectLocationRequest  = (id, adminNote) =>
   api.patch(`/admin/location-requests/${id}/reject`, { adminNote });
+
+// ─── Face Enrollments (admin / manager review) ────────────────────────────────
+
+export const adminGetFaceEnrollments    = (status = 'pending') =>
+  api.get('/admin/face-enrollments', { params: { status } });
+export const adminApproveFaceEnrollment  = (id, adminNote) =>
+  api.patch(`/admin/face-enrollments/${id}/approve`, { adminNote });
+export const adminRejectFaceEnrollment   = (id, adminNote) =>
+  api.patch(`/admin/face-enrollments/${id}/reject`, { adminNote });
 
 // ─── Departments + Profiles (user) ───────────────────────────────────────────
 
