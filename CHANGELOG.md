@@ -1,5 +1,44 @@
 # CHANGELOG
 
+## v2.2.0 — ArcFace face verification + manager-approved enrollment (2026-06-28)
+
+Replaces the old geometric-landmark face matcher (the source of false accepts —
+a different person could clear check-in at 80%+) with deep **ArcFace-family
+embeddings**, and adds enrollment governance + liveness.
+
+### Face verification (rewritten)
+- **On-device embeddings**: the app computes a MobileFaceNet (ArcFace-loss,
+  128-d) embedding via TFLite (`react-native-fast-tflite`) and uploads only the
+  vector — raw images never leave the device. New `services/faceEmbeddingService.js`
+  (with a `.web.js` stub; web keeps the password second factor).
+- **Server is the authority on the match**: `POST /api/face/verify` now compares
+  the probe embedding against the user's approved enrollment by **cosine
+  similarity** (`utils/faceUtils.js`), with a strict, env-tunable threshold
+  (`FACE_MATCH_THRESHOLD`, default 0.55). Distance/similarity convention is
+  documented to avoid inverting FAR/FRR.
+- **Automatic verification**: the native check-in flow removed the manual
+  "Verify" button — a single live frame is captured after a **blink** liveness
+  challenge and verification + check-in happen automatically.
+- **Liveness + quality gates**: passive anti-spoofing (MiniFASNet) plus an active
+  blink challenge; rejects blur, low light, glare, faces too small, and multiple
+  faces; ensures exactly one face.
+- **Manager approval**: registration submits a `face_enrollment_requests` row
+  (pending) and notifies admins/managers; the embedding only becomes active in
+  `user_face_data` once approved. New `services/faceEnrollmentService.js`,
+  `controllers/faceEnrollmentController.js`, `/api/admin/face-enrollments` routes,
+  and `screens/admin/AdminFaceEnrollmentsScreen.js` (reachable by managers via
+  Settings → Face Enrollments).
+- **Migration 005** wipes all legacy geometric templates — every user re-enrolls
+  (2 guided shots: front + slight turn) and is approved before checking in again.
+
+### Unchanged (by design)
+- Attendance / geofence / location APIs, the HMAC `faceToken` contract
+  (`utils/signToken.js`), and web password verification are untouched — only the
+  matching engine and enrollment workflow changed.
+
+> Requires a new EAS native build + two bundled `.tflite` models
+> (`frontend/assets/models/`, see its README).
+
 ## v2.0.1 — Security hardening + UX polish (2026-05-24)
 
 ### Security

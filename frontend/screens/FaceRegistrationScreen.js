@@ -1,11 +1,12 @@
 // screens/FaceRegistrationScreen.js
-// Multi-sample face registration — collects 5 valid frames and averages
-// the normalized feature ratios for a robust reference template.
+// ArcFace enrollment: capture 2 guided shots (front + slight turn), extract an
+// on-device embedding from each, and submit them for MANAGER APPROVAL. Raw
+// images never leave the device — only the embeddings are uploaded.
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Alert, ActivityIndicator,
-  Dimensions, Platform, ScrollView, Image, Linking,
+  Dimensions, Platform, ScrollView, Linking,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -13,311 +14,148 @@ import useThemeStore from '../store/themeStore';
 import useAuthStore from '../store/authStore';
 import Toast from '../components/Toast';
 import {
-  processDetectedFace,
-  validateFacePosition,
-  extractFaceFeatures,
-  averageFeatures,
-  saveFaceData,
-  deleteFaceData,
-  hasFaceData,
-  detectFacesFromImage,
+  detectFacesFromImage, processDetectedFace, validateFacePosition,
 } from '../services/faceRecognitionService';
-import { registerFaceOnServer, getApiErrorMessage } from '../services/api';
+import {
+  loadModels, analyzeCapture, buildFacePayload, isEmbeddingAvailable,
+} from '../services/faceEmbeddingService';
+import { registerFaceOnServer, getFaceStatusFromServer, getApiErrorMessage } from '../services/api';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const CAMERA_SIZE = Math.min(screenWidth - 48, screenHeight * 0.42, 380);
 const isWeb = Platform.OS === 'web';
 
-const REQUIRED_SAMPLES = 5;         // frames to collect for averaging
-const SAMPLE_INTERVAL_MS = 700;     // ms between auto-collected samples
+// Step-specific pose gates (degrees of yaw).
+const FRONT_MAX_YAW = 12;     // front shot must be near-frontal
+const TURN_MIN_YAW  = 15;     // turn shot must show a slight angle…
+const TURN_MAX_YAW  = 34;     // …but not so much the face is unusable
 
 export default function FaceRegistrationScreen({ navigation }) {
   const { colors: g, gradients: grad } = useThemeStore();
   const { user } = useAuthStore();
   const [permission, requestPermission] = useCameraPermissions();
 
-  // Stage: 'camera' → 'preview' → (save)
-  const [stage, setStage] = useState('camera');
-  const [isRegistering, setIsRegistering] = useState(false);
+  // stage: 'front' → 'turn' → 'uploading' → 'done'
+  const [stage, setStage] = useState('front');
+  const [busy, setBusy] = useState(false);
   const [faceDetected, setFaceDetected] = useState(false);
-  const [faceMessage, setFaceMessage] = useState(
-    isWeb ? 'Ready — click Capture when ready' : 'Position your face in the oval'
-  );
-  const [faceBounds, setFaceBounds] = useState(null);
-  const [lightingQuality, setLightingQuality] = useState('unknown');
-
-  // Multi-sample collection
-  const [sampleCount, setSampleCount] = useState(0);
-  const [isCollecting, setIsCollecting] = useState(false);
+  const [lighting, setLighting] = useState('unknown');
+  const [message, setMessage] = useState('Look straight at the camera for shot 1 of 2');
   const [isCameraReady, setIsCameraReady] = useState(false);
-
-  const [capturedUri, setCapturedUri] = useState(null);
-  const [capturedFeatures, setCapturedFeatures] = useState(null);
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
 
   const cameraRef = useRef(null);
-  const currentFaceRef = useRef(null);
-  const lastDetectionRef = useRef(Date.now());
-  const samplesRef = useRef([]);
-  const sampleTimerRef = useRef(null);
-  const isCollectingRef = useRef(false);
   const pollActiveRef = useRef(false);
-  const stageRef = useRef('camera');
-
-  const showToast = (message, type = 'success') => setToast({ visible: true, message, type });
-
-  useEffect(() => {
-    if (!user?.id) return;
-    hasFaceData(user.id).then((hasData) => {
-      if (hasData) {
-        Alert.alert(
-          'Face Already Registered',
-          'Re-registering will replace your existing face data.',
-          [
-            { text: 'Cancel', style: 'cancel', onPress: () => navigation.goBack() },
-            { text: 'Re-register' },
-          ]
-        );
-      }
-    });
-  }, [user, navigation]);
-
-  // Keep stageRef in sync so polling closure always reads the latest stage
+  const embeddingsRef = useRef([]);
+  const lastQualityRef = useRef(null);
+  const stageRef = useRef('front');
   useEffect(() => { stageRef.current = stage; }, [stage]);
 
-  // Timeout hint if no face detected
-  useEffect(() => {
-    if (isWeb || stage !== 'camera') return;
-    const interval = setInterval(() => {
-      if (!faceDetected && Date.now() - lastDetectionRef.current > 7000) {
-        setFaceMessage('No face detected — try better lighting or move closer');
-      }
-    }, 2500);
-    return () => clearInterval(interval);
-  }, [faceDetected, stage]);
+  const showToast = (m, type = 'error') => setToast({ visible: true, message: m, type });
 
-  // ── Face detection via ML Kit polling ───────────────────────────────────────
-  // CameraView has no face-detection callback on SDK 52, so we poll: take a
-  // low-quality photo every 1.5 s and run ML Kit detection on it.
+  // Warm the TFLite models + warn if the user already has an active/pending face.
+  useEffect(() => {
+    if (isWeb) return;
+    loadModels().catch(() => showToast('Face models failed to load — please update the app.'));
+    getFaceStatusFromServer()
+      .then((r) => {
+        const st = r.data?.status;
+        if (st === 'approved') {
+          Alert.alert('Face Already Registered', 'Re-registering replaces your active face and needs manager approval again.',
+            [{ text: 'Cancel', style: 'cancel', onPress: () => navigation.goBack() }, { text: 'Re-register' }]);
+        } else if (st === 'pending') {
+          Alert.alert('Already Pending', 'You already have a face enrollment awaiting approval. Re-submitting will replace it.',
+            [{ text: 'Cancel', style: 'cancel', onPress: () => navigation.goBack() }, { text: 'Re-submit' }]);
+        }
+      })
+      .catch(() => {});
+  }, [navigation]);
+
+  // Live preview poll (guidance only — capture is button-driven per step).
   useEffect(() => {
     if (isWeb || !isCameraReady) return;
     const id = setInterval(async () => {
-      if (pollActiveRef.current || isCollectingRef.current || stageRef.current !== 'camera') return;
-      if (!cameraRef.current) return;
+      if (pollActiveRef.current || busy || !cameraRef.current || ['uploading', 'done'].includes(stageRef.current)) return;
       pollActiveRef.current = true;
       try {
-        const photo = await cameraRef.current.takePictureAsync({
-          quality: 0.15, skipProcessing: true, exif: false,
-        });
+        const photo = await cameraRef.current.takePictureAsync({ quality: 0.15, skipProcessing: true, exif: false });
         const faces = await detectFacesFromImage(photo.uri);
-        handleFacesDetected({ faces });
-      } catch (e) {
-        if (e?.message === 'FACE_MODULE_MISSING' || /doesn't seem to be linked/.test(e?.message || '')) {
-          setFaceMessage('Face detection unavailable — please update the app');
-        }
-        /* otherwise camera busy or not ready — skip this tick */
-      }
+        if (!faces?.length) { setFaceDetected(false); setLighting('unknown'); setMessage('No face detected'); return; }
+        if (faces.length > 1) { setFaceDetected(false); setMessage('Multiple faces — one person only'); return; }
+        const face = processDetectedFace(faces[0]);
+        setLighting(face.leftEyeOpenProbability !== undefined ? 'good' : 'poor');
+        const v = validateFacePosition(face);
+        const yaw = Math.abs(face.yawAngle ?? 0);
+        if (!v.valid) { setFaceDetected(false); setMessage(v.message); return; }
+        if (stageRef.current === 'front' && yaw > FRONT_MAX_YAW) { setFaceDetected(false); setMessage('Look straight ahead'); return; }
+        if (stageRef.current === 'turn' && yaw < TURN_MIN_YAW) { setFaceDetected(false); setMessage('Turn your head slightly to one side'); return; }
+        setFaceDetected(true);
+        setMessage(stageRef.current === 'front' ? '✓ Hold still — tap Capture (1 of 2)' : '✓ Hold the slight turn — tap Capture (2 of 2)');
+      } catch { /* camera busy — skip tick */ }
       finally { pollActiveRef.current = false; }
-    }, 1500);
+    }, 1200);
     return () => clearInterval(id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isCameraReady, isWeb]);
+  }, [isCameraReady, busy]);
 
-  // ── Auto-collect samples when face is valid ─────────────────────────────────
-  const startCollecting = useCallback(() => {
-    if (isCollectingRef.current) return;
-    isCollectingRef.current = true;
-    setIsCollecting(true);
-
-    const collectSample = () => {
-      if (!isCollectingRef.current) return;
-      const face = currentFaceRef.current;
-      if (!face) return;
-      const validation = validateFacePosition(face);
-      if (!validation.valid) return;
-
-      const features = extractFaceFeatures(face);
-      if (features) {
-        samplesRef.current.push(features);
-        const count = samplesRef.current.length;
-        setSampleCount(count);
-        console.log(`[Registration] Sample ${count}/${REQUIRED_SAMPLES} collected`);
-
-        if (count >= REQUIRED_SAMPLES) {
-          stopCollecting();
-          finalizeCapture();
-        }
-      }
-    };
-
-    sampleTimerRef.current = setInterval(collectSample, SAMPLE_INTERVAL_MS);
-  }, []);
-
-  const stopCollecting = () => {
-    isCollectingRef.current = false;
-    setIsCollecting(false);
-    if (sampleTimerRef.current) {
-      clearInterval(sampleTimerRef.current);
-      sampleTimerRef.current = null;
-    }
-  };
-
-  useEffect(() => () => stopCollecting(), []); // cleanup on unmount
-
-  const finalizeCapture = async () => {
-    // Average all collected samples
-    const averaged = averageFeatures(samplesRef.current);
-    if (!averaged) {
-      showToast('Could not build face profile. Try again.', 'error');
-      resetCamera();
-      return;
-    }
-
-    // Take one photo for the preview image
-    let photoUri = null;
+  const captureShot = async () => {
+    if (busy || !cameraRef.current) return;
+    setBusy(true);
     try {
-      if (cameraRef.current) {
-        const photo = await cameraRef.current.takePictureAsync({ quality: 0.8, base64: false });
-        photoUri = photo.uri;
-      }
-    } catch (_) {/* ignore photo error — features are what matter */}
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.85, skipProcessing: false, exif: false });
+      const faces = await detectFacesFromImage(photo.uri);
+      if (!faces?.length)      { showToast('No face detected — center your face.'); return; }
+      if (faces.length > 1)    { showToast('Multiple faces — one person only.'); return; }
 
-    setCapturedFeatures(averaged);
-    setCapturedUri(photoUri);
-    setStage('preview');
-  };
+      const face = processDetectedFace(faces[0]);
+      const v = validateFacePosition(face);
+      if (!v.valid) { showToast(v.message); return; }
 
-  // ── Face detection handler ──────────────────────────────────────────────────
-  const handleFacesDetected = ({ faces }) => {
-    if (stage !== 'camera') return;
-    lastDetectionRef.current = Date.now();
+      const yaw = Math.abs(face.yawAngle ?? 0);
+      if (stage === 'front' && yaw > FRONT_MAX_YAW)              { showToast('Face straight ahead for the front shot.'); return; }
+      if (stage === 'turn'  && (yaw < TURN_MIN_YAW || yaw > TURN_MAX_YAW)) { showToast('Turn your head slightly (not too far).'); return; }
 
-    if (!faces || faces.length === 0) {
-      setFaceDetected(false);
-      setFaceMessage('No face detected');
-      setFaceBounds(null);
-      currentFaceRef.current = null;
-      setLightingQuality('unknown');
-      if (isCollectingRef.current) stopCollecting();
-      return;
-    }
-    if (faces.length > 1) {
-      setFaceDetected(false);
-      setFaceMessage('Multiple faces detected — one person only');
-      setFaceBounds(null);
-      currentFaceRef.current = null;
-      if (isCollectingRef.current) stopCollecting();
-      return;
-    }
+      const result = await analyzeCapture({ uri: photo.uri, width: photo.width, height: photo.height }, face);
+      if (!result.ok) { showToast(result.reason || 'Capture failed — try again.'); return; }
 
-    const face = processDetectedFace(faces[0]);
-    currentFaceRef.current = face;
-    if (face.bounds) setFaceBounds(face.bounds);
+      embeddingsRef.current.push(result.embedding);
+      lastQualityRef.current = result.quality;
 
-    const hasLandmarks = face.leftEyeOpenProbability !== undefined || face.rightEyeOpenProbability !== undefined;
-    setLightingQuality(hasLandmarks ? 'good' : 'poor');
-
-    const validation = validateFacePosition(face);
-    if (validation.valid) {
-      setFaceDetected(true);
-      if (isCollectingRef.current) {
-        setFaceMessage(`Collecting... ${sampleCount}/${REQUIRED_SAMPLES} — hold still`);
+      if (stage === 'front') {
+        setStage('turn');
+        setMessage('Now turn your head slightly to the side for shot 2 of 2');
+        showToast('Front shot captured!', 'success');
       } else {
-        setFaceMessage('✓ Face detected — tap Capture to begin');
+        await upload();
       }
-    } else {
-      setFaceDetected(false);
-      setFaceMessage(validation.message);
-      if (isCollectingRef.current) stopCollecting();
+    } catch (e) {
+      showToast(e?.message === 'FACE_MODULE_MISSING' ? 'Face models unavailable — update the app.' : 'Capture error — try again.');
+    } finally {
+      setBusy(false);
     }
   };
 
-  // ── Manual capture button ───────────────────────────────────────────────────
-  const handleCapture = async () => {
-    // Web: face detection is not available — face registration is not supported.
-    // Web users authenticate with their account password instead (see FaceVerificationScreen).
-    // DO NOT create fake/empty face data here.
-    if (isWeb) {
-      showToast('Face registration is not available on web. Web check-in uses your password.', 'error');
-      return;
-    }
-    if (!faceDetected || !currentFaceRef.current) {
-      showToast('Position your face correctly first', 'error');
-      return;
-    }
-    // Reset sample buffer and start collecting
-    samplesRef.current = [];
-    setSampleCount(0);
-    startCollecting();
-  };
-
-  const handleRetake = () => {
-    stopCollecting();
-    samplesRef.current = [];
-    setSampleCount(0);
-    setCapturedUri(null);
-    setCapturedFeatures(null);
-    setStage('camera');
-    setFaceDetected(false);
-    lastDetectionRef.current = Date.now();
-    setFaceMessage(isWeb ? 'Ready — click Capture when ready' : 'Position your face in the oval');
-  };
-
-  const resetCamera = () => {
-    stopCollecting();
-    samplesRef.current = [];
-    setSampleCount(0);
-    setFaceDetected(false);
-    setStage('camera');
-    setFaceMessage('Position your face in the oval');
-  };
-
-  const handleSaveRegistration = async () => {
-    setIsRegistering(true);
+  const upload = async () => {
+    setStage('uploading');
     try {
-      if (!capturedFeatures || capturedFeatures.__v !== 2) {
-        showToast('Invalid face data. Please retake.', 'error');
-        setIsRegistering(false);
-        return;
-      }
-
-      // Validate that we have real face data (non-empty ratios)
-      const ratioCount = Object.keys(capturedFeatures.ratios || {}).length;
-      if (ratioCount < 3) {
-        showToast('Insufficient face data captured. Please retake in better lighting.', 'error');
-        setIsRegistering(false);
-        return;
-      }
-
-      // 1. Save locally to AsyncStorage (for fast local pre-screening during verification)
-      await saveFaceData(user.id, capturedFeatures, capturedUri);
-
-      // 2. Save to server (REQUIRED — backend verifies against this data on check-in/out)
-      try {
-        await registerFaceOnServer(capturedFeatures);
-      } catch (serverErr) {
-        // Local save succeeded but server sync failed
-        // Remove local data to keep in sync (user should retry)
-        try { await deleteFaceData(user.id); } catch (_) {}
-        showToast(
-          'Could not sync face data with server: ' + getApiErrorMessage(serverErr) +
-          '. Please check your connection and try again.',
-          'error'
-        );
-        setIsRegistering(false);
-        return;
-      }
-
-      showToast('Face registered and synced to server!', 'success');
-      setTimeout(() => navigation.goBack(), 1500);
-    } catch (err) {
-      showToast('Failed to save face data. Try again.', 'error');
-      setIsRegistering(false);
+      const payload = buildFacePayload(embeddingsRef.current, lastQualityRef.current);
+      await registerFaceOnServer(payload);
+      setStage('done');
+    } catch (e) {
+      showToast(getApiErrorMessage(e));
+      setStage('turn'); // keep the front embedding; let them retry the upload
     }
   };
 
-  // ── Web: face registration is not supported ──────────────────────────────────
-  // Web users check in/out using server-side password verification instead.
+  const restart = () => {
+    embeddingsRef.current = [];
+    lastQualityRef.current = null;
+    setStage('front');
+    setFaceDetected(false);
+    setMessage('Look straight at the camera for shot 1 of 2');
+  };
+
+  // ── Web: not supported (browsers can't run the native ML stack) ──────────────
   if (isWeb) {
     return (
       <LinearGradient colors={grad.screen} style={styles.container}>
@@ -326,12 +164,9 @@ export default function FaceRegistrationScreen({ navigation }) {
           <Text style={[styles.title, { color: g.text, textAlign: 'center' }]}>Not Available on Web</Text>
           <Text style={[styles.hint, { color: g.textMuted, textAlign: 'center', marginBottom: 20 }]}>
             Face registration requires the mobile app.{'\n\n'}
-            When checking in on web, you will be asked to re-enter your account password — that serves as your identity verification.
+            On web you confirm check-ins with your account password instead.
           </Text>
-          <TouchableOpacity
-            style={[styles.btn, { backgroundColor: g.accent }]}
-            onPress={() => navigation.goBack()}
-          >
+          <TouchableOpacity style={[styles.btn, { backgroundColor: g.accent }]} onPress={() => navigation.goBack()}>
             <Text style={styles.btnText}>← Go Back</Text>
           </TouchableOpacity>
         </View>
@@ -339,237 +174,114 @@ export default function FaceRegistrationScreen({ navigation }) {
     );
   }
 
-  // ── Permission gates (native only — browser handles permissions automatically)
-  if (!isWeb) {
-    if (!permission) {
-      return (
-        <LinearGradient colors={grad.screen} style={styles.container}>
-          <View style={styles.centered}>
-            <ActivityIndicator size="large" color={g.accent} />
-            <Text style={[styles.hint, { color: g.textMuted, marginTop: 12 }]}>Loading camera...</Text>
-          </View>
-        </LinearGradient>
-      );
-    }
-
-    if (!permission.granted) {
-      const canAsk = permission.canAskAgain !== false;
-      return (
-        <LinearGradient colors={grad.screen} style={styles.container}>
-          <View style={styles.centered}>
-            <Text style={{ fontSize: 48, marginBottom: 16 }}>📷</Text>
-            <Text style={[styles.title, { color: g.text, textAlign: 'center' }]}>Camera Access Needed</Text>
-            <Text style={[styles.hint, { color: g.textMuted, textAlign: 'center', marginBottom: 28 }]}>
-              {canAsk
-                ? 'Camera permission is required to register your face.'
-                : 'Camera permission was denied. Please enable it in your device Settings to continue.'}
-            </Text>
-            {canAsk ? (
-              <TouchableOpacity style={[styles.btn, { backgroundColor: g.accent }]} onPress={requestPermission}>
-                <Text style={styles.btnText}>Grant Permission</Text>
-              </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={[styles.btn, { backgroundColor: g.accent }]} onPress={() => Linking.openSettings()}>
-                <Text style={styles.btnText}>Open Settings</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={[styles.cancelBtn, { borderColor: g.border }]} onPress={() => navigation.goBack()}>
-              <Text style={[styles.cancelText, { color: g.textMuted }]}>Go Back</Text>
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
-      );
-    }
+  // ── Permission gates ─────────────────────────────────────────────────────────
+  if (!permission) {
+    return (
+      <LinearGradient colors={grad.screen} style={styles.container}>
+        <View style={styles.centered}><ActivityIndicator size="large" color={g.accent} />
+          <Text style={[styles.hint, { color: g.textMuted, marginTop: 12 }]}>Loading camera…</Text></View>
+      </LinearGradient>
+    );
+  }
+  if (!permission.granted) {
+    const canAsk = permission.canAskAgain !== false;
+    return (
+      <LinearGradient colors={grad.screen} style={styles.container}>
+        <View style={styles.centered}>
+          <Text style={{ fontSize: 48, marginBottom: 16 }}>📷</Text>
+          <Text style={[styles.title, { color: g.text, textAlign: 'center' }]}>Camera Access Needed</Text>
+          <Text style={[styles.hint, { color: g.textMuted, textAlign: 'center', marginBottom: 28 }]}>
+            {canAsk ? 'Camera permission is required to register your face.'
+                    : 'Camera permission was denied. Enable it in your device Settings to continue.'}
+          </Text>
+          <TouchableOpacity style={[styles.btn, { backgroundColor: g.accent }]}
+            onPress={canAsk ? requestPermission : () => Linking.openSettings()}>
+            <Text style={styles.btnText}>{canAsk ? 'Grant Permission' : 'Open Settings'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.cancelBtn, { borderColor: g.border }]} onPress={() => navigation.goBack()}>
+            <Text style={[styles.cancelText, { color: g.textMuted }]}>Go Back</Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
+    );
   }
 
-  // ── Progress bar for sample collection ─────────────────────────────────────
-  const progressPct = Math.min(sampleCount / REQUIRED_SAMPLES, 1);
+  // ── Success state ──────────────────────────────────────────────────────────
+  if (stage === 'done') {
+    return (
+      <LinearGradient colors={grad.screen} style={styles.container}>
+        <View style={styles.centered}>
+          <Text style={{ fontSize: 56, marginBottom: 12 }}>⏳</Text>
+          <Text style={[styles.title, { color: g.text, textAlign: 'center' }]}>Submitted for Approval</Text>
+          <Text style={[styles.hint, { color: g.textMuted, textAlign: 'center', marginBottom: 24 }]}>
+            Your face has been submitted. A manager must approve it before you can check in with face verification.
+            You'll get a notification once it's approved.
+          </Text>
+          <TouchableOpacity style={[styles.btn, { backgroundColor: g.mint }]} onPress={() => navigation.goBack()}>
+            <Text style={styles.btnText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
+    );
+  }
+
+  const stepNum = stage === 'front' ? 1 : 2;
+  const borderColor = stage === 'uploading' ? g.accent : faceDetected ? g.mint : g.coral;
 
   return (
     <LinearGradient colors={grad.screen} style={styles.container}>
-      <Toast
-        message={toast.message}
-        type={toast.type}
-        visible={toast.visible}
-        onHide={() => setToast((t) => ({ ...t, visible: false }))}
-      />
-      <ScrollView
-        contentContainerStyle={styles.scroll}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
+      <Toast message={toast.message} type={toast.type} visible={toast.visible}
+        onHide={() => setToast((t) => ({ ...t, visible: false }))} />
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <View style={styles.header}>
-          <Text style={[styles.title, { color: g.text }]}>
-            {stage === 'preview' ? 'Confirm Registration' : 'Register Your Face'}
-          </Text>
+          <Text style={[styles.title, { color: g.text }]}>Register Your Face</Text>
           <Text style={[styles.hint, { color: g.textMuted }]}>
-            {stage === 'preview'
-              ? `${capturedFeatures?.sampleCount || 0} samples captured — save to register`
-              : 'We collect 5 frames for a robust match. Hold still in good lighting.'}
+            Two quick shots in good lighting. A manager approves your face before it's used.
           </Text>
         </View>
 
         {/* Step indicator */}
         <View style={styles.stepRow}>
           <View style={[styles.stepDot, { backgroundColor: g.accent }]} />
-          <View style={[styles.stepLine, { backgroundColor: stage === 'preview' ? g.accent : g.border }]} />
-          <View style={[styles.stepDot, { backgroundColor: stage === 'preview' ? g.accent : g.border }]} />
+          <View style={[styles.stepLine, { backgroundColor: stepNum === 2 ? g.accent : g.border }]} />
+          <View style={[styles.stepDot, { backgroundColor: stepNum === 2 ? g.accent : g.border }]} />
         </View>
 
-        {stage === 'camera' ? (
-          <>
-            {/* Camera view */}
-            <View style={[styles.camWrap, {
-              width: CAMERA_SIZE,
-              height: CAMERA_SIZE,
-              borderColor: (faceDetected || isWeb) ? (isCollecting ? g.accent : g.mint) : g.coral,
-            }]}>
-              <CameraView
-                ref={cameraRef}
-                style={StyleSheet.absoluteFill}
-                facing="front"
-                onCameraReady={() => setIsCameraReady(true)}
-              />
-              <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                <View style={[styles.corner, styles.tl, { borderColor: (faceDetected || isWeb) ? g.mint : g.coral }]} />
-                <View style={[styles.corner, styles.tr, { borderColor: (faceDetected || isWeb) ? g.mint : g.coral }]} />
-                <View style={[styles.corner, styles.bl, { borderColor: (faceDetected || isWeb) ? g.mint : g.coral }]} />
-                <View style={[styles.corner, styles.br, { borderColor: (faceDetected || isWeb) ? g.mint : g.coral }]} />
-                {!isWeb && (
-                  <View style={[styles.oval, { borderColor: faceDetected ? g.mint : 'rgba(255,255,255,0.3)' }]} />
-                )}
-                {faceBounds && (
-                  <View style={[styles.bbox, {
-                    left: faceBounds.origin.x,
-                    top: faceBounds.origin.y,
-                    width: faceBounds.size.width,
-                    height: faceBounds.size.height,
-                    borderColor: faceDetected ? g.mint : g.coral,
-                  }]} />
-                )}
-                {!isWeb && (
-                  <View style={[styles.lightPill, {
-                    backgroundColor: lightingQuality === 'good' ? 'rgba(29,185,138,0.85)' : 'rgba(0,0,0,0.55)',
-                  }]}>
-                    <Text style={styles.lightText}>
-                      {lightingQuality === 'good' ? '☀ Good lighting' : lightingQuality === 'poor' ? '☁ Low lighting' : '● Checking...'}
-                    </Text>
-                  </View>
-                )}
-                {/* Sample count overlay */}
-                {isCollecting && (
-                  <View style={styles.sampleOverlay}>
-                    <Text style={styles.sampleCount}>{sampleCount}/{REQUIRED_SAMPLES}</Text>
-                  </View>
-                )}
-              </View>
+        <View style={[styles.camWrap, { width: CAMERA_SIZE, height: CAMERA_SIZE, borderColor }]}>
+          <CameraView ref={cameraRef} style={StyleSheet.absoluteFill} facing="front"
+            onCameraReady={() => setIsCameraReady(true)} />
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            {['tl', 'tr', 'bl', 'br'].map((c) => <View key={c} style={[styles.corner, styles[c], { borderColor }]} />)}
+            <View style={[styles.oval, { borderColor: faceDetected ? g.mint : 'rgba(255,255,255,0.3)' }]} />
+            <View style={[styles.lightPill, { backgroundColor: lighting === 'good' ? 'rgba(29,185,138,0.85)' : 'rgba(0,0,0,0.55)' }]}>
+              <Text style={styles.lightText}>{lighting === 'good' ? '☀ Good light' : lighting === 'poor' ? '☁ Low light' : '● Checking'}</Text>
             </View>
+          </View>
+        </View>
 
-            {/* Sample progress bar */}
-            {(isCollecting || sampleCount > 0) && (
-              <View style={[styles.progressWrap, { backgroundColor: g.glass, borderColor: g.border }]}>
-                <View style={[styles.progressBar, {
-                  width: `${progressPct * 100}%`,
-                  backgroundColor: sampleCount >= REQUIRED_SAMPLES ? g.mint : g.accent,
-                }]} />
-              </View>
-            )}
-
-            {/* Status */}
-            <View style={[styles.status, { backgroundColor: (faceDetected || isWeb) ? g.mintSoft : g.coralSoft }]}>
-              <Text style={[styles.statusText, { color: (faceDetected || isWeb) ? g.mint : g.coral }]}>
-                {isCollecting ? `Collecting sample ${sampleCount}/${REQUIRED_SAMPLES} — hold still` : faceMessage}
-              </Text>
-            </View>
-
-            {!isWeb && (
-              <View style={styles.tips}>
-                <Text style={[styles.tipText, { color: g.textMuted }]}>
-                  Face camera directly · Good lighting · One person only
-                </Text>
-              </View>
-            )}
-
-            <TouchableOpacity
-              style={[styles.btn, {
-                backgroundColor: (faceDetected || isWeb) && !isCollecting ? g.mint : g.textDim,
-                opacity: (faceDetected || isWeb) && !isCollecting ? 1 : 0.5,
-              }]}
-              onPress={handleCapture}
-              disabled={(!faceDetected && !isWeb) || isCollecting}
-            >
-              {isCollecting
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.btnText}>📷  Start Capture ({REQUIRED_SAMPLES} samples)</Text>}
-            </TouchableOpacity>
-          </>
-        ) : (
-          <>
-            {/* Preview */}
-            {capturedUri ? (
-              <View style={[styles.previewWrap, { width: CAMERA_SIZE, height: CAMERA_SIZE, borderColor: g.mint }]}>
-                <Image source={{ uri: capturedUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-                <View style={[styles.corner, styles.tl, { borderColor: g.mint }]} />
-                <View style={[styles.corner, styles.tr, { borderColor: g.mint }]} />
-                <View style={[styles.corner, styles.bl, { borderColor: g.mint }]} />
-                <View style={[styles.corner, styles.br, { borderColor: g.mint }]} />
-              </View>
-            ) : (
-              <View style={[styles.previewWrap, {
-                width: CAMERA_SIZE, height: CAMERA_SIZE * 0.5,
-                borderColor: g.mint, alignItems: 'center', justifyContent: 'center',
-              }]}>
-                <Text style={{ fontSize: 48, marginBottom: 8 }}>✅</Text>
-                <Text style={[styles.hint, { color: g.mint, textAlign: 'center' }]}>
-                  {capturedFeatures?.sampleCount || 0} samples captured
-                </Text>
-              </View>
-            )}
-
-            {/* Registration quality summary */}
-            <LinearGradient
-              colors={['rgba(62,232,199,0.08)', 'rgba(62,232,199,0.02)']}
-              style={[styles.qualityCard, { borderColor: 'rgba(62,232,199,0.3)' }]}
-            >
-              <Text style={{ color: g.mint, fontWeight: '800', fontSize: 14, marginBottom: 6 }}>
-                ✓ Registration Quality
-              </Text>
-              <Text style={{ color: g.textMuted, fontSize: 12 }}>
-                • {capturedFeatures?.sampleCount || 0} face samples averaged
-              </Text>
-              <Text style={{ color: g.textMuted, fontSize: 12 }}>
-                • {Object.keys(capturedFeatures?.ratios || {}).length} facial measurements stored
-              </Text>
-              <Text style={{ color: g.textMuted, fontSize: 12 }}>
-                • Scale-invariant recognition active
-              </Text>
-            </LinearGradient>
-
-            <TouchableOpacity
-              style={[styles.btn, { backgroundColor: isRegistering ? g.textDim : g.mint }]}
-              onPress={handleSaveRegistration}
-              disabled={isRegistering}
-            >
-              {isRegistering
-                ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.btnText}>✓  Save & Register</Text>}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.cancelBtn, { borderColor: g.border }]}
-              onPress={handleRetake}
-              disabled={isRegistering}
-            >
-              <Text style={[styles.cancelText, { color: g.textMuted }]}>↺  Retake</Text>
-            </TouchableOpacity>
-          </>
-        )}
+        <View style={[styles.status, { backgroundColor: faceDetected ? g.mintSoft : g.coralSoft }]}>
+          <Text style={[styles.statusText, { color: faceDetected ? g.mint : g.coral }]}>
+            {stage === 'uploading' ? 'Submitting for approval…' : message}
+          </Text>
+        </View>
 
         <TouchableOpacity
-          style={[styles.cancelBtn, { borderColor: g.border, marginTop: 8 }]}
-          onPress={() => navigation.goBack()}
-          disabled={isRegistering}
+          style={[styles.btn, { backgroundColor: faceDetected && !busy ? g.mint : g.textDim, opacity: faceDetected && !busy ? 1 : 0.5 }]}
+          onPress={captureShot}
+          disabled={!faceDetected || busy || stage === 'uploading'}
         >
+          {busy || stage === 'uploading'
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={styles.btnText}>📷  Capture shot {stepNum} of 2</Text>}
+        </TouchableOpacity>
+
+        {embeddingsRef.current.length > 0 && stage !== 'uploading' && (
+          <TouchableOpacity style={[styles.cancelBtn, { borderColor: g.border }]} onPress={restart} disabled={busy}>
+            <Text style={[styles.cancelText, { color: g.textMuted }]}>↺  Start over</Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity style={[styles.cancelBtn, { borderColor: g.border, marginTop: 8 }]} onPress={() => navigation.goBack()} disabled={busy}>
           <Text style={[styles.cancelText, { color: g.textMuted }]}>Cancel</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -578,8 +290,7 @@ export default function FaceRegistrationScreen({ navigation }) {
 }
 
 const CORNER = 22;
-const CORNER_W = 3;
-
+const CW = 3;
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scroll: { padding: 24, paddingTop: 52, paddingBottom: 40 },
@@ -590,44 +301,17 @@ const styles = StyleSheet.create({
   stepRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   stepDot: { width: 10, height: 10, borderRadius: 5 },
   stepLine: { flex: 1, height: 2, marginHorizontal: 6 },
-  camWrap: {
-    alignSelf: 'center', borderRadius: 20, borderWidth: 2,
-    overflow: 'hidden', marginBottom: 12,
-  },
-  previewWrap: {
-    alignSelf: 'center', borderRadius: 20, borderWidth: 2,
-    overflow: 'hidden', marginBottom: 14,
-  },
-  oval: {
-    position: 'absolute', alignSelf: 'center',
-    top: '10%', width: '55%', height: '75%',
-    borderRadius: 200, borderWidth: 2, borderStyle: 'dashed',
-  },
-  bbox: { position: 'absolute', borderWidth: 2, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.08)' },
+  camWrap: { alignSelf: 'center', borderRadius: 20, borderWidth: 2, overflow: 'hidden', marginBottom: 14 },
+  oval: { position: 'absolute', alignSelf: 'center', top: '10%', width: '55%', height: '75%', borderRadius: 200, borderWidth: 2, borderStyle: 'dashed' },
   corner: { position: 'absolute', width: CORNER, height: CORNER },
-  tl: { top: 14, left: 14, borderTopWidth: CORNER_W, borderLeftWidth: CORNER_W, borderTopLeftRadius: 6 },
-  tr: { top: 14, right: 14, borderTopWidth: CORNER_W, borderRightWidth: CORNER_W, borderTopRightRadius: 6 },
-  bl: { bottom: 14, left: 14, borderBottomWidth: CORNER_W, borderLeftWidth: CORNER_W, borderBottomLeftRadius: 6 },
-  br: { bottom: 14, right: 14, borderBottomWidth: CORNER_W, borderRightWidth: CORNER_W, borderBottomRightRadius: 6 },
+  tl: { top: 14, left: 14, borderTopWidth: CW, borderLeftWidth: CW, borderTopLeftRadius: 6 },
+  tr: { top: 14, right: 14, borderTopWidth: CW, borderRightWidth: CW, borderTopRightRadius: 6 },
+  bl: { bottom: 14, left: 14, borderBottomWidth: CW, borderLeftWidth: CW, borderBottomLeftRadius: 6 },
+  br: { bottom: 14, right: 14, borderBottomWidth: CW, borderRightWidth: CW, borderBottomRightRadius: 6 },
   lightPill: { position: 'absolute', top: 12, right: 12, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 14 },
   lightText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  sampleOverlay: {
-    position: 'absolute', bottom: 12, left: 12,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    paddingHorizontal: 12, paddingVertical: 6,
-    borderRadius: 12,
-  },
-  sampleCount: { color: '#fff', fontSize: 16, fontWeight: '900' },
-  progressWrap: {
-    height: 6, borderRadius: 3, borderWidth: 1,
-    marginBottom: 10, overflow: 'hidden', marginHorizontal: 4,
-  },
-  progressBar: { height: '100%', borderRadius: 3 },
   status: { borderRadius: 12, paddingVertical: 12, paddingHorizontal: 16, marginBottom: 14, alignItems: 'center' },
   statusText: { fontSize: 14, fontWeight: '700', textAlign: 'center' },
-  tips: { marginBottom: 14 },
-  tipText: { fontSize: 12, textAlign: 'center', lineHeight: 18 },
-  qualityCard: { borderRadius: 14, padding: 14, marginBottom: 14, borderWidth: 1, gap: 4 },
   btn: { borderRadius: 16, paddingVertical: 17, alignItems: 'center', marginBottom: 10 },
   btnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   cancelBtn: { borderRadius: 16, paddingVertical: 14, alignItems: 'center', borderWidth: 1, marginBottom: 8 },

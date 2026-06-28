@@ -12,9 +12,7 @@ import useTimeStore from '../store/timeStore';
 import useAuthStore from '../store/authStore';
 import useGoalStore from '../store/goalStore';
 import { logOut } from '../services/authService';
-import { getMe } from '../services/api';
-import { hasFaceData, deleteFaceData } from '../services/faceRecognitionService';
-import { deleteFaceFromServer } from '../services/api';
+import { getMe, getFaceStatusFromServer, deleteFaceFromServer } from '../services/api';
 
 const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
@@ -34,7 +32,9 @@ export default function SettingsScreen({ navigation }) {
   useFocusEffect(
     useCallback(() => {
       if (user?.id) {
-        hasFaceData(user.id).then(setFaceRegistered);
+        getFaceStatusFromServer()
+          .then((r) => setFaceRegistered(!!r.data?.registered))
+          .catch(() => {});
         getMe().then((res) => {
           const r = res.data?.role || 'user';
           setUserRole(r);
@@ -54,8 +54,7 @@ export default function SettingsScreen({ navigation }) {
   const handleDeleteFace = () => {
     const doDelete = async () => {
       try {
-        await deleteFaceData(user.id);          // local AsyncStorage
-        try { await deleteFaceFromServer(); } catch (_) {} // server — best-effort
+        await deleteFaceFromServer();           // server is the source of truth
         setFaceRegistered(false);
         if (Platform.OS === 'web') {
           window.alert('Face data deleted successfully.');
@@ -367,6 +366,13 @@ export default function SettingsScreen({ navigation }) {
                   title="My Team"
                   subtitle="Live attendance view for your department"
                   onPress={() => navigation.navigate('TeamDashboard')}
+                />
+                <View style={[st.divider, { backgroundColor: g.border }]} />
+                <SettingRow
+                  icon="🪪"
+                  title="Face Enrollments"
+                  subtitle="Approve or reject team face registrations"
+                  onPress={() => navigation.navigate('AdminFaceEnrollments')}
                 />
               </>
             )}

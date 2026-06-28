@@ -8,7 +8,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import useThemeStore from '../../store/themeStore';
 import useAuthStore from '../../store/authStore';
-import { adminGetStats, adminGetLocationRequests, adminGetLeaves, adminGetCorrections, getApiErrorMessage } from '../../services/api';
+import { adminGetStats, adminGetLocationRequests, adminGetLeaves, adminGetCorrections, adminGetFaceEnrollments, getApiErrorMessage } from '../../services/api';
 
 // ── All navigation items ──────────────────────────────────────────────────────
 const ALL_ITEMS = [
@@ -17,6 +17,7 @@ const ALL_ITEMS = [
   { key: 'leaves',      section: 'operations', emoji: '🌴', title: 'Leave Requests',        sub: 'Approve or reject employee leaves',  screen: 'AdminLeaves',          badge: 'pendingLeaves' },
   { key: 'corrections', section: 'operations', emoji: '✏️', title: 'Correction Requests',   sub: 'Review attendance time corrections', screen: 'AdminCorrections',      badge: 'pendingCorrections' },
   { key: 'locreqs',     section: 'operations', emoji: '📬', title: 'Location Requests',     sub: 'Review user location submissions',  screen: 'AdminLocationRequests', badge: 'pendingRequests' },
+  { key: 'faceenroll',  section: 'operations', emoji: '🪪', title: 'Face Enrollments',      sub: 'Approve user face registrations',   screen: 'AdminFaceEnrollments',  badge: 'pendingFaces' },
   // Analytics
   { key: 'analytics',   section: 'analytics',  emoji: '📈', title: 'Workforce Analytics',   sub: 'Trends, dept breakdown, performers', screen: 'AdminAnalytics' },
   { key: 'leaveana',    section: 'analytics',  emoji: '🌿', title: 'Leave Analytics',        sub: 'Monthly trends & type breakdown',   screen: 'AdminLeaveAnalytics' },
@@ -68,17 +69,19 @@ export default function AdminDashboardScreen({ navigation }) {
   const [pendingRequests, setPendingRequests]     = useState(0);
   const [pendingLeaves, setPendingLeaves]         = useState(0);
   const [pendingCorrections, setPendingCorrections] = useState(0);
+  const [pendingFaces, setPendingFaces]           = useState(0);
 
   const anims = useRef([0, 1, 2, 3].map(() => new Animated.Value(0))).current;
 
   const load = useCallback(async () => {
     setError(null);
     try {
-      const [statsRes, reqRes, leavesRes, corrsRes] = await Promise.allSettled([
+      const [statsRes, reqRes, leavesRes, corrsRes, facesRes] = await Promise.allSettled([
         adminGetStats(),
         adminGetLocationRequests('pending'),
         adminGetLeaves({ status: 'pending' }),
         adminGetCorrections({ status: 'pending' }),
+        adminGetFaceEnrollments('pending'),
       ]);
       if (statsRes.status === 'fulfilled') setStats(statsRes.value.data);
       else setError(getApiErrorMessage(statsRes.reason));
@@ -88,6 +91,8 @@ export default function AdminDashboardScreen({ navigation }) {
         setPendingLeaves(leavesRes.value.data.pendingCount || leavesRes.value.data.leaves?.length || 0);
       if (corrsRes.status === 'fulfilled')
         setPendingCorrections(corrsRes.value.data.pendingCount || corrsRes.value.data.corrections?.length || 0);
+      if (facesRes.status === 'fulfilled')
+        setPendingFaces(facesRes.value.data.pendingCount || facesRes.value.data.requests?.length || 0);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -109,6 +114,7 @@ export default function AdminDashboardScreen({ navigation }) {
     pendingLeaves,
     pendingCorrections,
     pendingRequests,
+    pendingFaces,
   };
 
   const statItems = stats ? [

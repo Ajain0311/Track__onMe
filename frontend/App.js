@@ -29,6 +29,7 @@ import AdminUserDetailScreen from './screens/admin/AdminUserDetailScreen';
 import AdminLocationsScreen from './screens/admin/AdminLocationsScreen';
 import AdminLocationFormScreen from './screens/admin/AdminLocationFormScreen';
 import AdminLocationRequestsScreen from './screens/admin/AdminLocationRequestsScreen';
+import AdminFaceEnrollmentsScreen from './screens/admin/AdminFaceEnrollmentsScreen';
 import AdminAuditLogsScreen from './screens/admin/AdminAuditLogsScreen';
 import AdminLiveAttendanceScreen from './screens/admin/AdminLiveAttendanceScreen';
 import AdminLeavesScreen from './screens/admin/AdminLeavesScreen';
@@ -313,6 +314,7 @@ export default function App() {
                 <Stack.Screen name="AdminLocations" component={AdminLocationsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminLocationForm" component={AdminLocationFormScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminLocationRequests" component={AdminLocationRequestsScreen} options={{ animation: 'slide_from_right' }} />
+                <Stack.Screen name="AdminFaceEnrollments" component={AdminFaceEnrollmentsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminAuditLogs" component={AdminAuditLogsScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminLiveAttendance" component={AdminLiveAttendanceScreen} options={{ animation: 'slide_from_right' }} />
                 <Stack.Screen name="AdminLeaves" component={AdminLeavesScreen} options={{ animation: 'slide_from_right' }} />
