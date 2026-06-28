@@ -59,7 +59,7 @@ app.use(rateLimit({ windowMs: 60_000, max: 200 }));
 // ─── Health / root ────────────────────────────────────────────────────────────
 
 app.get('/',        (_req, res) => res.json({ status: 'ok', message: 'AttendTrack API' }));
-app.get('/health',  (_req, res) => res.json({ status: 'ok', uptime: process.uptime(), version: '2.1.0' }));
+app.get('/health',  (_req, res) => res.json({ status: 'ok', uptime: process.uptime(), version: '2.2.0' }));
 
 // ─── Routes ───────────────────────────────────────────────────────────────────
 
