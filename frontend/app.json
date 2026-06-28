@@ -22,6 +22,7 @@
         "backgroundColor": "#06060f"
       },
       "package": "com.attendtrack.app",
+      "versionCode": 2,
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",

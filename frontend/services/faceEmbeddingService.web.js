@@ -8,7 +8,7 @@
 
 export const MODEL_NAME = 'mobilefacenet';
 export const EMBED_INPUT = 112;
-export const EMBED_DIM = 128;
+export const EMBED_DIM = 192;
 
 export const isEmbeddingAvailable = () => false;
 
